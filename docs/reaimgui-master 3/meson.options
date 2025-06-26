@@ -1,0 +1,9 @@
+option('resource_path', type: 'string', value: 'auto',
+  description: 'REAPER resource path where to install ReaImGui or "auto"')
+
+option('bindings', type: 'array', choices: ['cpp', 'human', 'luals', 'python', 'zig'],
+  description: 'Generate language bindings')
+option('examples', type: 'feature', value: 'disabled',
+  description: 'Build example plugins')
+option('tests', type: 'feature', value: 'enabled',
+  description: 'Build the test suite')

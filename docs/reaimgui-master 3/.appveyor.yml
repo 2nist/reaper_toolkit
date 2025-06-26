@@ -1,0 +1,174 @@
+---
+version: "{build}-{branch}"
+stack: python 3
+
+install:
+  - sh:  sudo -H "$(command -v python3)" -m ensurepip --upgrade
+  - sh:  sudo -H "$(command -v pip3)" install meson
+  - cmd: pip3 install meson
+  - git submodule update --init --depth 1
+build_script:
+  - sh:  meson setup build --buildtype=release ${meson_options[@]}
+           -Dcpp_std=c++17 -Dbuild.cpp_std=c++17 -Dexamples=enabled
+  - cmd: meson setup build --buildtype=debugoptimized -Dexamples=enabled
+  - ninja -C build
+test_script:
+  - meson test -vC build reaimgui
+artifacts:
+  - path: build/examples/gfx2imgui.lua
+  - path: build/imgui.py
+  - path: build/imgui_defs.lua
+  - path: build/reaper_imgui*.*
+
+for:
+  - matrix: { only: [ appveyor_build_worker_image: &linux Ubuntu1804 ] }
+    cache:
+      - $HOME/.cache/pip         -> .appveyor.yml
+      - subprojects/packagecache -> subprojects/*.wrap
+    before_build: |-
+      set -e
+
+      sudo sed -i '/arch=/! s/^deb/deb [arch=amd64,i386]/' /etc/apt/sources.list
+      awk '
+      $3 !~ /ubuntu\.com/ { next }
+      $1 == "deb" {
+        $2 = "[arch=armhf,arm64]";
+        $3 = "http://ports.ubuntu.com/ubuntu-ports/"
+      } 1' /etc/apt/sources.list | sudo tee /etc/apt/sources.list.d/ports.list > /dev/null
+      sudo sed -i 's/apt.postgresql.org/apt-archive.postgresql.org/' /etc/apt/sources.list
+      sudo rm /etc/apt/sources.list.d/google-chrome.list
+
+      install-deps() {
+        local arch="$1"; shift
+        local native=("$@" ninja-build php-cli)
+        local target=(libgtk-3-dev)
+
+        sudo dpkg --add-architecture $arch
+        sudo apt-get update -qq --allow-releaseinfo-change
+        sudo apt-get install -qq aptitude > /dev/null
+        sudo aptitude install -yR ${native[@]} ${target[@]/%/:$arch} > /dev/null
+      }
+
+      sudo update-alternatives --set gcc /usr/bin/gcc-7
+      sudo apt-get install -qq --allow-downgrades libstdc++6=8.4.0-1ubuntu1~18.04 > /dev/null
+
+      case $ARCH in
+      x86_64)
+        install-deps amd64
+        ;;
+      i686)
+        install-deps i386 g++-multilib pkg-config:i386
+        crossfile=i686-linux-gnu
+        ;;
+      armv7l)
+        install-deps armhf g++-arm-linux-gnueabihf qemu-user
+        crossfile=arm-linux-gnueabihf
+        ;;
+      aarch64)
+        install-deps arm64 g++-aarch64-linux-gnu qemu-user
+        crossfile=aarch64-linux-gnu
+        ;;
+      esac
+
+      if [ -n "${crossfile+x}" ]; then
+        meson_options+=(--cross-file "cross/$crossfile.ini")
+      fi
+
+  - matrix: { only: [ appveyor_build_worker_image: macos-sonoma,
+                      appveyor_build_worker_image: macos-bigsur,
+                      appveyor_build_worker_image: macos-mojave ] }
+    cache:
+      - $HOME/Library/Caches/pip -> .appveyor.yml
+      - subprojects/packagecache -> subprojects/*.wrap
+    before_build:
+      - |-
+        case $ARCH in
+        arm64)  export MACOSX_DEPLOYMENT_TARGET=11.0 XCODE_VERSION=15.2.0 ;;
+        x86_64) export MACOSX_DEPLOYMENT_TARGET=10.9 XCODE_VERSION=13.2.1 ;;
+        i386)   export MACOSX_DEPLOYMENT_TARGET=10.9 XCODE_VERSION=9.4.1  ;;
+        esac
+        sudo xcode-select -s /Applications/Xcode-$XCODE_VERSION.app
+
+      # fixes this warning when linking in 32-bit builds:
+      # building for OSX, but linking against dylib (xxx.dylib) built for (unknown)
+      - export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+
+      - |-
+        crossfile="cross/$ARCH-darwin.ini"
+        if [ -f "$crossfile" ]; then
+          meson_options+=(--cross-file "$crossfile")
+        fi
+
+      # don't use libraries from /Library/Frameworks/Mono.framework
+      - force_fallback=(freetype2 libpng)
+      # libpng >= 1.6.26 needs zlib >= 1.2.8.1's inflateValidate
+      # (shipped only since macOS 10.13)
+      - if [ "$ARCH" != 'arm64' ]; then force_fallback+=(zlib); fi
+      - meson_options+=(--force-fallback-for="$(IFS=,; echo "${force_fallback[*]}")")
+
+      # https://letsencrypt.org/docs/dst-root-ca-x3-expiration-september-2021/
+      - |-
+        if [ "$appveyor_build_worker_image" = "macos-mojave" ]; then
+          sudo curl -k https://curl.se/ca/cacert.pem -o /etc/ssl/cert.pem
+        fi
+
+      # NASM is required to build libjpeg-turbo with SIMD
+      - curl -O 'https://www.nasm.us/pub/nasm/releasebuilds/2.16.01/macosx/nasm-2.16.01-macosx.zip'
+      - unzip -j nasm-*-macosx.zip "nasm-*/nasm" -d /usr/local/bin
+
+      - sudo -H pip3 install ninja
+
+  - matrix: { only: [ appveyor_build_worker_image: &windows Visual Studio 2022 ] }
+    cache:
+      - '%LocalAppData%\pip\Cache -> .appveyor.yml'
+      # override with a backslash to avoid "error calculating dependencies CRC:
+      # pattern contains invalid characters"
+      - subprojects/packagecache -> subprojects\*.wrap
+    before_build:
+      - set VCPATH="%ProgramFiles%\Microsoft Visual Studio\2022\Community"
+      - if "%ARCH%" == "x64" call %VCPATH%\VC\Auxiliary\Build\vcvars64.bat
+      - if "%ARCH%" == "x86" call %VCPATH%\VC\Auxiliary\Build\vcvars32.bat
+    after_test:
+      # avoid very long "Calculating dependencies checksum" phase
+      - git clean -fxdq -e subprojects/packagecache subprojects
+
+environment:
+  matrix:
+    - job_name: Windows x86 64-bit
+      appveyor_build_worker_image: *windows
+      ARCH: x64
+    - job_name: Windows x86 32-bit
+      appveyor_build_worker_image: *windows
+      ARCH: x86
+    - job_name: macOS ARM 64-bit
+      appveyor_build_worker_image: macos-sonoma
+      ARCH: arm64
+    - job_name: macOS x86 64-bit
+      appveyor_build_worker_image: macos-bigsur
+      ARCH: x86_64
+    - job_name: macOS x86 32-bit
+      appveyor_build_worker_image: macos-mojave
+      ARCH: i386
+    - job_name: Linux x86 64-bit
+      appveyor_build_worker_image: *linux
+      ARCH: x86_64
+    - job_name: Linux x86 32-bit
+      appveyor_build_worker_image: *linux
+      ARCH: i686
+    - job_name: Linux ARM 64-bit
+      appveyor_build_worker_image: *linux
+      ARCH: aarch64
+    - job_name: Linux ARM 32-bit
+      appveyor_build_worker_image: *linux
+      ARCH: armv7l
+
+deploy:
+  provider: GitHub
+  draft: true
+  description: ''
+  force_update: true
+  auth_token:
+    secure: 6dgJUqO2qAwADLQuvONd+mD5esFPBws7RA/3RSiEjrmquCsWpidm4ayawCPSEtfQ
+  artifact: /.*\.(dll|dylib|so)|reaper_imgui_(doc\.html|functions\.h)|imgui.*\.(lua|py)|reaper_imgui\.zig|gfx2imgui\.lua/
+  on:
+    APPVEYOR_REPO_TAG: true

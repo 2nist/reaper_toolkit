@@ -1,0 +1,13 @@
+{
+  "Lua.runtime.version": "Lua 5.4",
+  "Lua.diagnostics.globals": ["reaper","imgui"],
+  "Lua.workspace.library": [
+    "${workspaceFolder}/.vscode/imgui_defs_*.lua",
+    "${workspaceFolder}/.vscode/Sexan_reaper_defs.lua",
+    "/Users/Matthew/.vscode-insiders/extensions/antoinebalaine.reascript-docs-0.1.14/resources/Sexan_reaper_defs.lua",
+    "/Users/Matthew/.vscode-insiders/extensions/antoinebalaine.reascript-docs-0.1.14/resources/imgui_defs_0.9.lua",
+    "/Users/Matthew/.vscode-insiders/extensions/antoinebalaine.reascript-docs-0.1.14/resources/reawwise_defs.lua"
+  ],
+"Lua.workspace.preloadFileSize": 1024,
+"lua_analyzer.codeLinting.enable": false
+}

@@ -1,0 +1,1 @@
+lua EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua --test tests/run_all_tests.lua

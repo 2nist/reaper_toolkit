@@ -1,0 +1,165 @@
+/*  Working with audio in ReaScript
+    
+    This template was adapted from eugen2777's "Create stretch markers at transients"
+    EEL script. Cheers to him.  
+    
+*/
+
+function Msg(str)(
+    ShowConsoleMsg( str );
+    ShowConsoleMsg( "\n");
+);
+
+function NumToString(num)(
+    sprintf(#, "%.3f", num);
+);
+
+
+
+// Perform some sort of action based on the audio in the selected take
+// (within the current time selection, if any)
+function IterateSamples()
+
+    local(item, take, PCM_source, samplerate, n_channels,
+        Threshold_dB, Sensitivity_dB, Retrig_sec,  Threshold, Sensitivity, Retrig, 
+        attTime1, relTime1, attTime2, relTime2, ga1, gr1, ga2, gr2, envOut1, envOut2
+        item_start, item_len, sel_start, sel_end, playrate, range_start, range_len, range_end, range_len_smpls,
+        block_size, n_blocks, rest_smples, mrk,
+        AA, starttime_sec, samplebuffer, cur_block, i, j, spl,
+        t1, t2, num_samples)
+    (      
+    
+
+    // Basic item info
+    item = GetSelectedMediaItem(0, 0);
+    take = GetActiveTake(item);
+    PCM_source = GetMediaItemTake_Source(take);
+    samplerate = GetMediaSourceSampleRate(PCM_source);
+    
+    Msg("Sample rate: ");
+    Msg( NumToString(samplerate); );    
+    
+    // Sort out the selection range
+    item_start = GetMediaItemInfo_Value(item, "D_POSITION");
+    item_len  = GetMediaItemInfo_Value(item, "D_LENGTH"); 
+    GetSet_LoopTimeRange(0, 0, sel_start, sel_end, 0);    
+    !(sel_end - sel_start) ? ( 
+        sel_start = item_start; 
+        sel_end = item_start+item_len;
+    );
+    
+    sel_start = max(sel_start, item_start);
+    sel_end   = min(sel_end, item_start+item_len);
+    sel_end - sel_start < 0 ? MB("Time selection out of item range!", "Note", 0); 
+    
+    // Make sure the selection is coherent
+    sel_end - sel_start > 0 ? (
+    
+        
+        // The math is much simpler if we convert to playrate == 1
+        // Don't worry, we'll put everything back afterward
+        playrate  = GetMediaItemTakeInfo_Value(take, "D_PLAYRATE");
+        playrate != 1 ? (
+        SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", 1);
+        SetMediaItemInfo_Value(item, "D_LENGTH", item_len*playrate);
+        );
+        
+        // Define the time range w.r.t the original playrate
+        range_start = (sel_start-item_start)*playrate;
+        range_len = (sel_end-sel_start)*playrate;
+        range_end = range_start+range_len;
+        range_len_smpls = floor(range_len*samplerate);
+        
+        // Break the range into blocks
+        block_size = 65536;
+        n_blocks = floor(range_len_smpls/block_size); 
+        rest_smples = range_len_smpls - block_size*n_blocks;
+        
+        // Allow for multichannel audio
+        n_channels = GetMediaSourceNumChannels(PCM_source);
+        
+        Msg("Channels: ");
+        Msg( NumToString(n_channels); );
+        
+        // 'samplebuffer' will hold all of the audio data for each block
+        AA = CreateTakeAudioAccessor(take);
+        starttime_sec = range_start;
+        samplebuffer = 0;
+        cur_block = 0;
+        
+        t1 = time_precise();
+        num_samples = 0;
+        
+        Msg("\nIterating...");
+
+        // Loop through the audio, one block at a time
+        loop(n_blocks+1,
+
+            // The last iteration will almost never be a full block
+            cur_block == n_blocks ? block_size = rest_smples;
+            
+            // EEL doesn't have dynamic arrays, so we have to specify how much memory to use
+            memset(0,0,block_size * n_channels);
+            
+            // Loads 'samplebuffer' with the next block
+            GetAudioAccessorSamples(AA, samplerate, n_channels, starttime_sec, block_size, samplebuffer);
+            
+            i=0;
+            loop(block_size,
+            
+                // Loop through each channel separately
+                j=1;
+                loop(n_channels,
+                
+                    spl = samplebuffer[i * j];
+
+
+                    //
+                    //
+                    //  Do whatever you want
+                    //  with the sample here
+                    //
+                    //
+                    num_samples += 1;
+                
+                    j+=1;
+                );
+                
+                i+=1;  
+                
+            );
+            
+            // Increment our position and block number
+            starttime_sec+=(block_size * n_channels)/samplerate;
+            cur_block+=1;
+            
+        );
+        
+        Msg("Done!\n");
+        
+        t2 = time_precise() - t1;
+        Msg("Iterated over ");
+        Msg( NumToString(num_samples); );
+        Msg(" samples\nin ");
+        Msg( NumToString(t2); );
+        Msg(" seconds");
+        
+        
+        // Tell Reaper we're done working with this item, so the memory can be freed
+        DestroyAudioAccessor(AA);
+        
+        // I told you we'd put everything back
+        playrate != 1 ? (
+            SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", playrate); // restore orig playrate
+            SetMediaItemInfo_Value(item, "D_LENGTH", item_len);  // restore orig length
+        );  
+    
+    
+        UpdateTimeline();
+    );          
+
+);
+
+
+IterateSamples();
+        

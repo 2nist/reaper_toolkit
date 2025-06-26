@@ -1,0 +1,38 @@
+/* ReaImGui: ReaScript binding for Dear ImGui
+ * Copyright (C) 2021-2023  Christian Fillion
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <iostream>
+
+#include "../api/compstr.hpp"
+#include "../src/vernum.hpp"
+
+int main()
+{
+  // replaced by the output of `git describe`, eg. "v0.8.6.1-8-g19dcefc"
+  static constexpr char gitDescribe[] { "@VCS_TAG@" };
+  constexpr VerNum version { CompStr::version<&gitDescribe> };
+
+  const char *tagVersion { gitDescribe };
+  if(*tagVersion == 'v')
+    ++tagVersion;
+
+  std::cout << "#define REAIMGUI_VERSION \""     << tagVersion << "\"\n"
+            << "#define REAIMGUI_VERSION_MAJOR " << version[0] << '\n'
+            << "#define REAIMGUI_VERSION_MINOR " << version[1] << '\n'
+            << "#define REAIMGUI_VERSION_PATCH " << version[2] << '\n'
+            << "#define REAIMGUI_VERSION_TWEAK " << version[3] << '\n';
+}

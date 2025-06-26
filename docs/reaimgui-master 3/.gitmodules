@@ -1,0 +1,9 @@
+[submodule "imgui"]
+	path = subprojects/imgui/imgui
+	url = https://github.com/cfillion/imgui.git
+[submodule "reaper-sdk"]
+	path = subprojects/reaper-sdk/reaper-sdk
+	url = https://github.com/justinfrankel/reaper-sdk.git
+[submodule "WDL"]
+	path = subprojects/WDL/WDL
+	url = https://github.com/justinfrankel/WDL.git
