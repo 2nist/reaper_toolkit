@@ -20,17 +20,25 @@ local ImGui
 if reaper and reaper.ImGui_CreateContext then
   ImGui = setmetatable({}, {
     __index = function(t, k)
-      local fn = reaper["ImGui_" .. k]
-      if fn then return fn end
+      local v = reaper["ImGui_" .. k]
+      if v ~= nil then return v end
       return rawget(t, k)
     end
   })
+  -- Provide missing constants for compatibility
+  ImGui.Cond_Once = type(reaper.ImGui_Cond_Once) == "number" and reaper.ImGui_Cond_Once or 1
+  ImGui.WindowFlags_MenuBar = type(reaper.ImGui_WindowFlags_MenuBar) == "number" and reaper.ImGui_WindowFlags_MenuBar or 16
+  ImGui.ChildFlags_Border = type(reaper.ImGui_ChildFlags_Border) == "number" and reaper.ImGui_ChildFlags_Border or 2
 else
   ImGui = require 'imgui' '0.9.2'
   if not ImGui then
     reaper.MB("ReaImGui not found. Please install ReaImGui from ReaPack.", "Error", 0)
     return
   end
+  -- Provide missing constants for compatibility
+  ImGui.Cond_Once = ImGui.Cond_Once or 1
+  ImGui.WindowFlags_MenuBar = ImGui.WindowFlags_MenuBar or 16
+  ImGui.ChildFlags_Border = ImGui.ChildFlags_Border or 2
 end
 
 -- Load core modules
@@ -54,8 +62,8 @@ local show_demo_window = false
 local function loop()
   -- Set initial window size and position to fill the docker
   local _, _, _, w, h = reaper.GetSet_ArrangeView2(0, false, 0, 0, 0, 0)
-  w = w or 800 -- Fallback if getting width fails
-  h = h or 600 -- Fallback if getting height fails
+  w = tonumber(w) or 800 -- Fallback if getting width fails
+  h = tonumber(h) or 600 -- Fallback if getting height fails
   ImGui.SetNextWindowSize(ctx, w, h, ImGui.Cond_Once)
   ImGui.SetNextWindowPos(ctx, 0, 0, ImGui.Cond_Once)
 
