@@ -105,7 +105,8 @@ local function generate_hardened_function(func_info)
     table.insert(arg_names, arg.name)
   end
 
-  local new_func = {string.format("function reaper.%s(%s)", func_info.name, table.concat(arg_names, ", "))}
+  -- Generate an assignment expression, not a function declaration, to be valid inside an if block.
+  local new_func = {string.format("reaper.%s = function(%s)", func_info.name, table.concat(arg_names, ", "))}
 
   -- Generate argument checks
   for i, arg in ipairs(func_info.args) do
@@ -159,7 +160,6 @@ for name, info in pairs(parsed_funcs) do
     print(string.format("  %s %s(%s)", info.ret_type, name, args_str))
 end
 
--- Read mock file
 local mock_f = io.open(mock_file_path, "r")
 if not mock_f then
   print("[ERROR] Could not read mock file: " .. mock_file_path)
@@ -168,36 +168,35 @@ end
 local mock_content = mock_f:read("*a")
 mock_f:close()
 
-local replacements = 0
--- Iterate through all parsed C++ functions
+-- Extract the core logic from the original mock file.
+local core_logic_end = mock_content:find("-- Auto-generated mock stubs from sync_envi_mocks.lua --", 1, true)
+if not core_logic_end then
+  print("[ERROR] Could not find the auto-generation marker in the mock file.")
+  os.exit(1)
+end
+local core_logic = mock_content:sub(1, core_logic_end - 1)
+
+-- Generate all the new hardened functions.
+local hardened_functions = {}
 for name, info in pairs(parsed_funcs) do
-  -- This pattern finds the corresponding placeholder function in the Lua mock file.
-  -- It is designed to be flexible, handling variations in whitespace and newlines.
-  -- The double backslash `\\.` is crucial to correctly escape the dot for the pattern.
-  local pattern = "(function%s+reaper\\." .. name .. "%s*%(%s*%.%.%.%s*%)%s*)[%s%S]-?(end)"
-  local hardened_func_body = generate_hardened_function(info)
-
-  local new_mock_content, count = mock_content:gsub(pattern, hardened_func_body)
-
-  if count > 0 then
-    mock_content = new_mock_content
-    replacements = replacements + count
-    print("  Replaced mock for " .. name)
-  end
+  table.insert(hardened_functions, generate_hardened_function(info))
 end
 
-if replacements > 0 then
-  print("\n--- Writing " .. replacements .. " hardened mocks to " .. mock_file_path .. " ---")
-  local out_f = io.open(mock_file_path, "w")
-  if not out_f then
-    print("[ERROR] Could not write to mock file: " .. mock_file_path)
-    os.exit(1)
-  end
-  out_f:write(mock_content)
-  out_f:close()
-  print("--- Hardening complete. ---")
-else
-  print("\n--- No functions were replaced. Mocks may already be hardened or do not exist. ---")
-end
+-- Assemble the new file content.
+local new_file_content = {
+  core_logic,
+  "-- Auto-generated mock stubs from harden_envi_mocks.lua --\n",
+  table.concat(hardened_functions, "\n\n")
+}
 
-print("\nHarden Mocks script finished. (Implementation in progress)")
+print("\n--- Writing " .. #hardened_functions .. " hardened mocks to " .. mock_file_path .. " ---")
+local out_f = io.open(mock_file_path, "w")
+if not out_f then
+  print("[ERROR] Could not write to mock file: " .. mock_file_path)
+  os.exit(1)
+end
+out_f:write(table.concat(new_file_content, ""))
+out_f:close()
+print("--- Hardening complete. ---")
+
+print("\nHarden Mocks script finished.")
