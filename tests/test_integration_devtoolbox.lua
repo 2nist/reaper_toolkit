@@ -4,15 +4,16 @@
 local EnhancedVirtualReaper = require('EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper')
 EnhancedVirtualReaper.create_environment()
 
--- Load main.lua and simulate environment
-local ok, err = pcall(dofile, './main.lua')
-assert(ok, 'main.lua should load without error: ' .. tostring(err))
+-- Load main.lua as a module to ensure shared module instances
+local ok, main_module = pcall(require, 'main')
+assert(ok, 'main.lua should load without error: ' .. tostring(main_module))
+
+-- Get modules from the main script to ensure shared state
+local script_manager = main_module.script_manager
+local logger = main_module.console_logger
 
 -- Simulate selecting each tool and calling its draw function
-local script_manager = dofile('./modules/script_manager.lua')
-script_manager.init('.')
 local tools = script_manager.get_tools()
-local logger = dofile('./modules/console_logger.lua')
 
 for name, tool in pairs(tools) do
   assert(type(tool.draw) == 'function', 'Tool ' .. name .. ' should have a draw function')

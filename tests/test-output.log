@@ -1,0 +1,32 @@
+LINT FAIL: See tests/luacheck.log for details.
+--- Running test_config_panel.lua ---
+PASS: test_config_panel.lua
+--- Running test_console_logger.lua ---
+  Attempt 1 failed.
+FAIL: test_console_logger.lua
+  Error: ./modules/console_logger.lua:53: table index is nil
+--- Running test_devtoolbox.lua ---
+PASS: test_devtoolbox.lua
+--- Running test_imgui_child_balance.lua ---
+PASS: test_imgui_child_balance.lua
+--- Running test_integration_devtoolbox.lua ---
+  Attempt 1 failed.
+FAIL: test_integration_devtoolbox.lua
+  Error: ./tests/test_integration_devtoolbox.lua:31: Log should contain integration draw messages
+--- Running test_script_manager.lua ---
+PASS: test_script_manager.lua
+--- Running test_template_tool.lua ---
+PASS: test_template_tool.lua
+--- Running test_theming.lua ---
+PASS: test_theming.lua
+
+=== Test Summary ===
+PASS test_config_panel.lua
+FAIL test_console_logger.lua ./modules/console_logger.lua:53: table index is nil
+PASS test_devtoolbox.lua
+PASS test_imgui_child_balance.lua
+FAIL test_integration_devtoolbox.lua ./tests/test_integration_devtoolbox.lua:31: Log should contain integration draw messages
+PASS test_script_manager.lua
+PASS test_template_tool.lua
+PASS test_theming.lua
+2 test(s) failed.

@@ -1,0 +1,36 @@
+2025-06-26 23:27:01 - [DEBUG] demo.lua script started
+2025-06-26 23:27:01 - [DEBUG] Found demo function: menu
+2025-06-26 23:27:01 - [DEBUG] Found demo function: unsaved_document
+2025-06-26 23:27:01 - [DEBUG] Found demo function: open
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_docking
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_scrollbar
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_collapse
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_background
+2025-06-26 23:27:01 - [DEBUG] Found demo function: loop
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_nav
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_move
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_close
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_menu
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_resize
+2025-06-26 23:27:01 - [DEBUG] Found demo function: no_titlebar
+2025-06-26 23:27:01 - [DEBUG] Logger is working
+2025-06-26 23:34:35 - [DEBUG] demo.lua script started
+2025-06-26 23:34:35 - [DEBUG] Found demo function: open
+2025-06-26 23:34:35 - [DEBUG] Found demo function: menu
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_titlebar
+2025-06-26 23:34:35 - [DEBUG] Found demo function: loop
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_close
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_collapse
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_background
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_move
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_nav
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_docking
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_menu
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_resize
+2025-06-26 23:34:35 - [DEBUG] Found demo function: unsaved_document
+2025-06-26 23:34:35 - [DEBUG] Found demo function: no_scrollbar
+2025-06-26 23:34:35 - [DEBUG] Logger is working
+2025-06-26 23:34:35 - [INFO] Starting systematic execution of demo functions
+2025-06-26 23:34:35 - [INFO] Executing function: loop
+2025-06-26 23:34:35 - [ERROR] Error executing function loop: ...x-reaper-master/docs/reaimgui-master 3/examples/demo.lua:149: attempt to call a nil value (field 'PushStyle')
+2025-06-26 23:34:35 - [INFO] Completed execution of demo functions

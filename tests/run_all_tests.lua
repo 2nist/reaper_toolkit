@@ -1,3 +1,4 @@
+_TEST_ENV = true
 
 -- Advanced Automation: Linting, Coverage, Log Archiving, Fail Fast, Retry, Test Stub Generation
 local lfs = require('lfs')
@@ -13,10 +14,10 @@ print('--- Linting with luacheck ---')
 local lint_ok = os.execute('luacheck . > ' .. test_dir .. '/luacheck.log 2>&1')
 if lint_ok ~= 0 then
   print('LINT FAIL: See tests/luacheck.log for details.')
-  log_fh:write('LINT FAIL: See tests/luacheck.log for details.\n')
+  if log_fh then log_fh:write('LINT FAIL: See tests/luacheck.log for details.\n') end
 else
   print('LINT PASS')
-  log_fh:write('LINT PASS\n')
+  if log_fh then log_fh:write('LINT PASS\n') end
 end
 
 -- 2. Code Coverage (luacov)
@@ -36,17 +37,17 @@ local failures = 0
 
 for _, file in ipairs(test_files) do
   print('--- Running', file, '---')
-  log_fh:write('--- Running ' .. file .. ' ---\n')
+  if log_fh then log_fh:write('--- Running ' .. file .. ' ---\n') end
   local ok, err
   for attempt = 1, retry_count + 1 do
     ok, err = pcall(dofile, test_dir .. '/' .. file)
     if ok then break end
     print('  Attempt ' .. attempt .. ' failed.')
-    log_fh:write('  Attempt ' .. attempt .. ' failed.\n')
+    if log_fh then log_fh:write('  Attempt ' .. attempt .. ' failed.\n') end
   end
   if ok then
     print('PASS:', file)
-    log_fh:write('PASS: ' .. file .. '\n')
+    if log_fh then log_fh:write('PASS: ' .. file .. '\n') end
     table.insert(results, {file=file, status='PASS'})
   else
     print('FAIL:', file)
@@ -57,30 +58,30 @@ for _, file in ipairs(test_files) do
     print('    - Fix the code or test as needed.')
     print('    - Re-run the tests to confirm the fix.')
     print('    - If unsure, ask for help or consult the documentation.')
-    log_fh:write('FAIL: ' .. file .. '\n  Error: ' .. tostring(err) .. '\n')
+    if log_fh then log_fh:write('FAIL: ' .. file .. '\n  Error: ' .. tostring(err) .. '\n') end
     table.insert(results, {file=file, status='FAIL', error=err})
     failures = failures + 1
     if fail_fast then break end
   end
 end
 
-log_fh:write('\n=== Test Summary ===\n')
+if log_fh then log_fh:write('\n=== Test Summary ===\n') end
 print('\n=== Test Summary ===')
 for _, r in ipairs(results) do
   print(r.status, r.file, r.error or '')
-  log_fh:write(r.status .. ' ' .. r.file .. (r.error and (' ' .. r.error) or '') .. '\n')
+  if log_fh then log_fh:write(r.status .. ' ' .. r.file .. (r.error and (' ' .. r.error) or '') .. '\n') end
 end
 if failures == 0 then
   print('All tests passed!')
   print('You are ready to commit or deploy!')
-  log_fh:write('All tests passed!\n')
+  if log_fh then log_fh:write('All tests passed!\n') end
 else
   print(failures .. ' test(s) failed.')
   print('Please address the failures above before merging or deploying.')
-  log_fh:write(failures .. ' test(s) failed.\n')
+  if log_fh then log_fh:write(failures .. ' test(s) failed.\n') end
 end
 
-log_fh:close()
+if log_fh then log_fh:close() end
 
 -- 4. Archive logs and coverage (for CI)
 print('Test log archived at ' .. log_file)
@@ -100,8 +101,10 @@ for file in lfs.dir(modules_dir) do
         'assert(type(mod) == "table", "Module should return a table")\n' ..
         'print("' .. file .. ' basic load test passed.")\n'
       local out = io.open(test_path, 'w')
-      out:write(stub)
-      out:close()
+      if out then
+        out:write(stub)
+        out:close()
+      end
     else
       fh:close()
     end

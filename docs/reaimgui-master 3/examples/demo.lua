@@ -54,10 +54,38 @@ Index of this file:
 package.path = reaper.ImGui_GetBuiltinPath() .. '/?.lua'
 local ImGui = require 'imgui' '0.9.2'
 
+-- Enhanced logging to a file
+local log_file_path = reaper.GetResourcePath() .. '/demo_log.txt'
+local log_file = io.open(log_file_path, 'a')
+
+local function log_message(message)
+  if log_file then
+    log_file:write(os.date('%Y-%m-%d %H:%M:%S') .. ' - ' .. message .. '\n')
+    log_file:flush()
+  end
+end
+
+-- Wrap each demo function with logging
+local function safe_call(func, ...)
+  local ok, err = pcall(func, ...)
+  if not ok then
+    log_message('[ERROR] ' .. tostring(err))
+  else
+    log_message('[INFO] Successfully executed: ' .. tostring(func))
+  end
+end
+
 local ctx, clipper
 local FLT_MIN, FLT_MAX = ImGui.NumericLimits_Float()
 local DBL_MIN, DBL_MAX = ImGui.NumericLimits_Double()
 local IMGUI_VERSION, IMGUI_VERSION_NUM, REAIMGUI_VERSION = ImGui.GetVersion()
+
+-- Test the logger
+log_message('[DEBUG] demo.lua script started')
+
+-- List all keys in the demo table
+-- (demo table is defined below, so this will be run after its definition)
+-- We'll defer this to after demo is defined.
 
 local demo = {
   open = true,
@@ -117,15 +145,48 @@ local misc    = {}
 local app     = {}
 local cache   = {}
 
+function demo.PushStyle(ctx)
+  ImGui.PushStyleVar(ctx, 'WindowRounding', 0)
+  ImGui.PushStyleColor(ctx, 'WindowBg', {0, 0, 0, 0.5})
+end
+
+function demo.PopStyle(ctx)
+  ImGui.PopStyleColor(ctx, 1)
+  ImGui.PopStyleVar(ctx, 1)
+end
+
 function demo.loop()
-  demo.PushStyle()
+  demo.PushStyle(ctx)
   demo.open = demo.ShowDemoWindow(true)
-  demo.PopStyle()
+  demo.PopStyle(ctx)
 
   if demo.open then
     reaper.defer(demo.loop)
   end
 end
+
+-- List all keys in the demo table
+for name, func in pairs(demo) do
+  log_message('[DEBUG] Found demo function: ' .. name)
+end
+
+-- Test log message
+log_message('[DEBUG] Logger is working')
+
+-- Execute all demo functions systematically
+log_message('[INFO] Starting systematic execution of demo functions')
+for name, func in pairs(demo) do
+  if type(func) == 'function' then
+    log_message('[INFO] Executing function: ' .. name)
+    local ok, err = pcall(func)
+    if not ok then
+      log_message('[ERROR] Error executing function ' .. name .. ': ' .. tostring(err))
+    else
+      log_message('[INFO] Successfully executed function: ' .. name)
+    end
+  end
+end
+log_message('[INFO] Completed execution of demo functions')
 
 if select(2, reaper.get_action_context()) == debug.getinfo(1, 'S').source:sub(2) then
   -- show global storage in the IDE for convenience

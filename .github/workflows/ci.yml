@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Lua
+      uses: leafo/gh-actions-lua@v9
+      with:
+        lua-version: '5.3'
+
+    - name: Generate Tests
+      run: lua scripts/autogen_imgui_api_tests.lua
+
+    - name: Run Tests in Mock Environment
+      run: |
+        # This step is a placeholder. 
+        # We need to determine how to run the tests in the mock environment.
+        # For now, we assume a command exists.
+        echo "Running tests in mock environment..."
+        # lua -e "_TEST_ENV=true" tests/suite_imgui_api.lua > tests/imgui_env.log 2>&1
+
+    - name: Parse Test Results
+      run: lua scripts/parse_imgui_api_test_results.lua
+
+    - name: Harden Mocks
+      run: lua scripts/harden_envi_mocks.lua
+
+    - name: Check for changes
+      id: git-check
+      run: |
+        if git diff --exit-code --quiet EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua; then
+          echo "No changes to commit"
+          echo "::set-output name=changed::false"
+        else
+          echo "Changes detected"
+          echo "::set-output name=changed::true"
+        fi
+
+    - name: Commit and push changes
+      if: steps.git-check.outputs.changed == 'true'
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua
+        git commit -m "Automated mock hardening"
+        git push
