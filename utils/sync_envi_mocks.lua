@@ -2,8 +2,8 @@
 -- Usage: lua scripts/sync_envi_mocks.lua <diff_file> <mock_file>
 -- Reads a diff of test summaries and appends missing mock function stubs to the mock file.
 
-local diff_file = arg[1] or 'tests/summary_diff.txt'
-local mock_file = arg[2] or 'EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua'
+local diff_file = (arg and arg[1]) or 'tests/summary_diff.txt'
+local mock_file = (arg and arg[2]) or 'EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua'
 
 local function get_existing_mocks(file)
   local mocks = {}

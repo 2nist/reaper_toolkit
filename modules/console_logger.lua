@@ -22,6 +22,23 @@ if not singleton then
         messages = {}
     end
 
+    -- Add standard logging level functions
+    function singleton.info(message)
+        singleton.log("[INFO] " .. tostring(message))
+    end
+
+    function singleton.error(message)
+        singleton.log("[ERROR] " .. tostring(message))
+    end
+
+    function singleton.debug(message)
+        singleton.log("[DEBUG] " .. tostring(message))
+    end
+
+    function singleton.warn(message)
+        singleton.log("[WARN] " .. tostring(message))
+    end
+
     -- Only hijack if not already hijacked and not in the virtual test environment
     local function safe_field(t, k)
         return type(t) == "table" and t[k] or nil

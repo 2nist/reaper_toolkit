@@ -163,7 +163,7 @@ end
 local mock_f = io.open(mock_file_path, "r")
 if not mock_f then
   print("[ERROR] Could not read mock file: " .. mock_file_path)
-  os.exit(1)
+  if os and os.exit then os.exit(1) else return end
 end
 local mock_content = mock_f:read("*a")
 mock_f:close()
@@ -172,7 +172,7 @@ mock_f:close()
 local core_logic_end = mock_content:find("-- Auto-generated mock stubs from sync_envi_mocks.lua --", 1, true)
 if not core_logic_end then
   print("[ERROR] Could not find the auto-generation marker in the mock file.")
-  os.exit(1)
+  if os and os.exit then os.exit(1) else return end
 end
 local core_logic = mock_content:sub(1, core_logic_end - 1)
 
@@ -193,7 +193,7 @@ print("\n--- Writing " .. #hardened_functions .. " hardened mocks to " .. mock_f
 local out_f = io.open(mock_file_path, "w")
 if not out_f then
   print("[ERROR] Could not write to mock file: " .. mock_file_path)
-  os.exit(1)
+  if os and os.exit then os.exit(1) else return end
 end
 out_f:write(table.concat(new_file_content, ""))
 out_f:close()

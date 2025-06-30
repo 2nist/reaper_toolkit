@@ -1,32 +1,90 @@
 LINT FAIL: See tests/luacheck.log for details.
+--- Running test_color_picker.lua ---
+PASS: test_color_picker.lua
+--- Running test_comprehensive_integration.lua ---
+PASS: test_comprehensive_integration.lua
 --- Running test_config_panel.lua ---
-PASS: test_config_panel.lua
+  Attempt 1 failed.
+FAIL: test_config_panel.lua
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
 --- Running test_console_logger.lua ---
   Attempt 1 failed.
 FAIL: test_console_logger.lua
-  Error: ./modules/console_logger.lua:53: table index is nil
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
 --- Running test_devtoolbox.lua ---
-PASS: test_devtoolbox.lua
+  Attempt 1 failed.
+FAIL: test_devtoolbox.lua
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+--- Running test_devtoolbox_context.lua ---
+PASS: test_devtoolbox_context.lua
+--- Running test_floating_windows.lua ---
+PASS: test_floating_windows.lua
 --- Running test_imgui_child_balance.lua ---
 PASS: test_imgui_child_balance.lua
+--- Running test_imgui_color_api_reaper.lua ---
+  Attempt 1 failed.
+FAIL: test_imgui_color_api_reaper.lua
+  Error: ./tests/test_imgui_color_api_reaper.lua:23: attempt to index a nil value (global 'reaper')
+--- Running test_imgui_constants.lua ---
+PASS: test_imgui_constants.lua
+--- Running test_imgui_context_patterns.lua ---
+PASS: test_imgui_context_patterns.lua
+--- Running test_imgui_stack_balance.lua ---
+PASS: test_imgui_stack_balance.lua
 --- Running test_integration_devtoolbox.lua ---
   Attempt 1 failed.
 FAIL: test_integration_devtoolbox.lua
-  Error: ./tests/test_integration_devtoolbox.lua:31: Log should contain integration draw messages
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+--- Running test_integration_fixes.lua ---
+PASS: test_integration_fixes.lua
 --- Running test_script_manager.lua ---
-PASS: test_script_manager.lua
+  Attempt 1 failed.
+FAIL: test_script_manager.lua
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
 --- Running test_template_tool.lua ---
-PASS: test_template_tool.lua
+  Attempt 1 failed.
+FAIL: test_template_tool.lua
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
 --- Running test_theming.lua ---
-PASS: test_theming.lua
+  Attempt 1 failed.
+FAIL: test_theming.lua
+  Error: error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+--- Running test_theming_panel.lua ---
+  Attempt 1 failed.
+FAIL: test_theming_panel.lua
+  Error: ./tests/test_theming_panel.lua:48: theming_panel.draw() should not error: ./scripts/theming_panel.lua:106: attempt to call a nil value (field 'SetNextWindowSize')
 
 === Test Summary ===
-PASS test_config_panel.lua
-FAIL test_console_logger.lua ./modules/console_logger.lua:53: table index is nil
-PASS test_devtoolbox.lua
+PASS test_color_picker.lua
+PASS test_comprehensive_integration.lua
+FAIL test_config_panel.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+FAIL test_console_logger.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+FAIL test_devtoolbox.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+PASS test_devtoolbox_context.lua
+PASS test_floating_windows.lua
 PASS test_imgui_child_balance.lua
-FAIL test_integration_devtoolbox.lua ./tests/test_integration_devtoolbox.lua:31: Log should contain integration draw messages
-PASS test_script_manager.lua
-PASS test_template_tool.lua
-PASS test_theming.lua
-2 test(s) failed.
+FAIL test_imgui_color_api_reaper.lua ./tests/test_imgui_color_api_reaper.lua:23: attempt to index a nil value (global 'reaper')
+PASS test_imgui_constants.lua
+PASS test_imgui_context_patterns.lua
+PASS test_imgui_stack_balance.lua
+FAIL test_integration_devtoolbox.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+PASS test_integration_fixes.lua
+FAIL test_script_manager.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+FAIL test_template_tool.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+FAIL test_theming.lua error loading module 'EnviREAment.enviREAment_core_lib.enhanced_virtual_reaper' from file './EnviREAment/enviREAment_core_lib/enhanced_virtual_reaper.lua':
+	...REAment/enviREAment_core_lib/enhanced_virtual_reaper.lua:1748: <eof> expected near 'reaper'
+FAIL test_theming_panel.lua ./tests/test_theming_panel.lua:48: theming_panel.draw() should not error: ./scripts/theming_panel.lua:106: attempt to call a nil value (field 'SetNextWindowSize')
+9 test(s) failed.

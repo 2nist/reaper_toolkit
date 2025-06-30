@@ -2,7 +2,7 @@
 -- Usage: lua parse_imgui_api_test_results.lua <logfile>
 -- Reads a log file from run_all.lua batch run and summarizes pass/fail per test script.
 
-local log_path = arg[1] or "imgui_api_test_output.log"
+local log_path = (arg and arg[1]) or "imgui_api_test_output.log"
 local summary = {}
 local failed = {}
 local passed = {}
