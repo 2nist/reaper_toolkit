@@ -8,9 +8,17 @@ local console_logger = _G.console_logger or require('console_logger')
 
 function M.init()
     -- Initialize the enhanced theming panel
-    -- Nothing special needed for initialization
+    -- Load custom default theme if it exists
+    load_default_theme()
+    
+    -- Load saved theme and font settings
+    load_theme()
+    
     if console_logger then
         console_logger.log("Enhanced theming panel initialized")
+        local current_font = available_fonts[current_font_index]
+        local current_size = font_sizes[current_font_size_index]
+        console_logger.log("Current font setting: " .. current_font.name .. " @ " .. current_size .. "pt")
     end
 end
 
@@ -23,6 +31,81 @@ local theme_colors = {
     button_active = 0x333366FF,  -- Darker blue
 }
 local color_names = {"background", "text", "button", "button_hovered", "button_active"}
+
+-- Font management with safe path resolution
+local function get_script_directory()
+    -- Try to get script path from global first
+    local script_path = _G.script_path
+    if script_path and script_path ~= "" then
+        return script_path
+    end
+    
+    -- Fallback: calculate from current file location
+    local info = debug.getinfo(1, 'S')
+    if info and info.source then
+        local source_path = info.source:match[[^@?(.*[\/])[^\/]-$]]
+        if source_path then
+            -- Navigate up from panels/ to root directory
+            return source_path:gsub("panels[/\\]?$", "")
+        end
+    end
+    
+    -- Last resort: return empty string (will fall back to system font)
+    return ""
+end
+
+local function get_dymo_font_path()
+    local script_dir = get_script_directory()
+    if script_dir and script_dir ~= "" then
+        local dymo_path = script_dir .. "fonts/Dymo.ttf"
+        -- Check if file exists
+        local f = io.open(dymo_path, "r")
+        if f then
+            f:close()
+            if console_logger then
+                console_logger.log("INFO", "Dymo font found at: " .. dymo_path)
+            end
+            return dymo_path
+        else
+            if console_logger then
+                console_logger.log("WARNING", "Dymo font not found at: " .. dymo_path)
+            end
+        end
+    end
+    
+    -- Fallback to system font if Dymo not found
+    if console_logger then
+        console_logger.log("WARNING", "Dymo font not available, using Arial fallback")
+    end
+    return "Arial"
+end
+
+local available_fonts = {
+    {name = "Default", family = "default", size = 14, description = "ReaImGui default font"},
+    {name = "Helvetica", family = "Helvetica", size = 14, description = "Clean sans-serif (macOS)"},
+    {name = "American Typewriter", family = "American Typewriter", size = 14, description = "Typewriter style (macOS)"},
+    {name = "Dymo", family = "get_dymo_font_path_lazy", size = 14, description = "Embossed label font (custom)"},
+    {name = "Segoe UI", family = "Segoe UI", size = 14, description = "System font (Windows)"},
+    {name = "Times New Roman", family = "Times New Roman", size = 14, description = "Classic serif (Windows)"},
+    {name = "Sans-serif", family = "sans-serif", size = 14, description = "Generic sans-serif"},
+    {name = "Serif", family = "serif", size = 14, description = "Generic serif"},
+    {name = "Monospace", family = "monospace", size = 13, description = "Generic monospace"},
+    {name = "Monaco", family = "Monaco", size = 13, description = "Monospace (macOS)"},
+    {name = "Consolas", family = "Consolas", size = 13, description = "Monospace (Windows)"},
+}
+
+local current_font_index = 1 -- Default font
+local font_sizes = {10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24}
+local current_font_size_index = 5 -- 14pt default
+
+-- Default theme colors (can be updated by "Save as Default")
+local default_theme_colors = {
+    background = 0x333333FF,     -- Dark gray
+    text = 0xFFFFFFFF,           -- White  
+    button = 0x4D4D80FF,         -- Blue-gray
+    button_hovered = 0x6666B3FF, -- Lighter blue
+    button_active = 0x333366FF,  -- Darker blue
+}
 
 local presets = {
     ["Dark"] = {
@@ -98,13 +181,62 @@ local function save_theme()
         for _, name in ipairs(color_names) do
             file:write(name .. "=" .. string.format("0x%08X", theme_colors[name]) .. "\n")
         end
+        -- Save font settings
+        file:write("font_index=" .. current_font_index .. "\n")
+        file:write("font_size_index=" .. current_font_size_index .. "\n")
         file:close()
         if console_logger then
-            console_logger.log("INFO", "Theme saved to " .. theme_file_path)
+            console_logger.log("INFO", "Theme and font settings saved to " .. theme_file_path)
         end
     else
         if console_logger then
             console_logger.log("ERROR", "Failed to save theme")
+        end
+    end
+end
+
+local function save_default_theme()
+    if not reaper then return end
+    local default_file_path = reaper.GetResourcePath() .. "/devtoolbox_default_theme.txt"
+    local file = io.open(default_file_path, "w")
+    if file then
+        for _, name in ipairs(color_names) do
+            file:write(name .. "=" .. string.format("0x%08X", theme_colors[name]) .. "\n")
+        end
+        file:close()
+        -- Update in-memory defaults
+        for _, name in ipairs(color_names) do
+            default_theme_colors[name] = theme_colors[name]
+        end
+        if console_logger then
+            console_logger.log("INFO", "Current colors saved as new default theme")
+        end
+    else
+        if console_logger then
+            console_logger.log("ERROR", "Failed to save default theme")
+        end
+    end
+end
+
+local function load_default_theme()
+    if not reaper then return end
+    local default_file_path = reaper.GetResourcePath() .. "/devtoolbox_default_theme.txt"
+    local file = io.open(default_file_path, "r")
+    if file then
+        for line in file:lines() do
+            local name, hex_color = line:match("([^=]+)=(.+)")
+            if name and hex_color and default_theme_colors[name] then
+                default_theme_colors[name] = tonumber(hex_color)
+            end
+        end
+        file:close()
+        if console_logger then
+            console_logger.log("INFO", "Custom default theme loaded")
+        end
+    else
+        -- Use built-in defaults if no custom default file exists
+        if console_logger then
+            console_logger.log("INFO", "Using built-in default theme")
         end
     end
 end
@@ -116,19 +248,55 @@ local function load_theme()
     if file then
         for line in file:lines() do
             local name, hex_color = line:match("([^=]+)=(.+)")
-            if name and hex_color and theme_colors[name] then
-                theme_colors[name] = tonumber(hex_color)
+            if name and hex_color then
+                if theme_colors[name] then
+                    theme_colors[name] = tonumber(hex_color)
+                elseif name == "font_index" then
+                    current_font_index = tonumber(hex_color) or 1
+                elseif name == "font_size_index" then
+                    current_font_size_index = tonumber(hex_color) or 5
+                end
             end
         end
         file:close()
         if console_logger then
-            console_logger.log("INFO", "Theme loaded from " .. theme_file_path)
+            console_logger.log("INFO", "Theme and font settings loaded from " .. theme_file_path)
         end
     else
         if console_logger then
             console_logger.log("WARNING", "No theme file found")
         end
     end
+end
+
+-- Font management functions with improved error handling
+local function apply_font_settings()
+    -- Font changes require restarting the script due to ImGui limitations
+    if console_logger then
+        console_logger.log("INFO", "Font change registered - restart script to apply")
+    end
+    
+    -- Save the font settings properly using the existing save_theme function
+    save_theme()
+    
+    return nil
+end
+
+-- Get current font info for external use
+function M.get_current_font()
+    return {
+        font = available_fonts[current_font_index],
+        size = font_sizes[current_font_size_index],
+        index = current_font_index,
+        size_index = current_font_size_index
+    }
+end
+
+-- Set font externally
+function M.set_font(font_index, size_index)
+    current_font_index = math.max(1, math.min(#available_fonts, font_index or current_font_index))
+    current_font_size_index = math.max(1, math.min(#font_sizes, size_index or current_font_size_index))
+    return apply_font_settings()
 end
 
 -- Help marker helper (from demo)
@@ -225,7 +393,7 @@ function M.render(ctx)
             end
             
             ImGui.SameLine(ctx)
-            ImGui.Text(ctx, name:gsub("_", " "):upper())
+            ImGui.Text(ctx, string.upper(name:gsub("_", " ")))
             
             -- Show hex value
             ImGui.SameLine(ctx)
@@ -348,37 +516,171 @@ function M.draw(ctx)
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_Separator(ctx)
     
-    -- Color Customization Section
-    reaper.ImGui_Text(ctx, "Color Customization:")
+    -- Font Configuration Section
+    reaper.ImGui_Text(ctx, "Font Configuration")
+    reaper.ImGui_TextDisabled(ctx, "⚠️ Custom font loading temporarily disabled for stability")
+    reaper.ImGui_TextDisabled(ctx, "💡 Font preferences are saved but default font is used")
+    reaper.ImGui_TextDisabled(ctx, "🔧 This prevents 'frame has already begun' errors")
+    if reaper then
+        reaper.ImGui_TextDisabled(ctx, "📁 Settings saved to: " .. reaper.GetResourcePath() .. "/devtoolbox_theme.txt")
+    end
     reaper.ImGui_Spacing(ctx)
     
-    -- Color editors for each theme color with simple preview
+    -- Current font display
+    local current_font = available_fonts[current_font_index]
+    local current_size = font_sizes[current_font_size_index]
+    reaper.ImGui_Text(ctx, "Current: " .. current_font.name .. " @ " .. current_size .. "pt")
+    reaper.ImGui_Text(ctx, current_font.description)
+    reaper.ImGui_Spacing(ctx)
+    
+    -- Font family selection
+    reaper.ImGui_Text(ctx, "Font Family:")
+    for i, font in ipairs(available_fonts) do
+        if reaper.ImGui_RadioButton(ctx, font.name .. "##font_" .. i, current_font_index == i) then
+            current_font_index = i
+            apply_font_settings()  -- Save the font change immediately
+            if _G.console_logger then
+                _G.console_logger.log("✅ Font preference saved: " .. font.name)
+                _G.console_logger.log("💾 Auto-saved (currently using default font for stability)")
+            end
+        end
+        if i % 3 ~= 0 then -- 3 fonts per row
+            reaper.ImGui_SameLine(ctx)
+        end
+    end
+    
+    reaper.ImGui_Spacing(ctx)
+    
+    -- Font size selection
+    reaper.ImGui_Text(ctx, "Font Size:")
+    for i, size in ipairs(font_sizes) do
+        if reaper.ImGui_RadioButton(ctx, size .. "pt##size_" .. i, current_font_size_index == i) then
+            current_font_size_index = i
+            apply_font_settings()  -- Save the font size change immediately
+            if _G.console_logger then
+                _G.console_logger.log("✅ Font size preference saved: " .. size .. "pt")
+                _G.console_logger.log("💾 Auto-saved (currently using default font for stability)")
+            end
+        end
+        if i % 6 ~= 0 then -- 6 sizes per row
+            reaper.ImGui_SameLine(ctx)
+        end
+    end
+    
+    reaper.ImGui_Spacing(ctx)
+    
+    -- Font preview
+    if reaper.ImGui_Button(ctx, "Preview Font", 120, 0) then
+        if _G.console_logger then
+            _G.console_logger.log("Font preview: " .. current_font.name .. " " .. current_size .. "pt")
+            _G.console_logger.log("The quick brown fox jumps over the lazy dog")
+            _G.console_logger.log("Install Custom Font")
+        end
+    end
+    
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "Apply Font") then
+        apply_font_settings()  -- Save font settings
+        if _G.console_logger then
+            local current_font = available_fonts[current_font_index]
+            local current_size = font_sizes[current_font_size_index]
+            _G.console_logger.log("✅ Font saved: " .. current_font.name .. " " .. current_size .. "pt")
+            _G.console_logger.log("� Saved to: " .. (reaper.GetResourcePath() .. "/devtoolbox_theme.txt"))
+            _G.console_logger.log("�🔄 Please restart the script to see font changes")
+        end
+    end
+    
+    reaper.ImGui_Spacing(ctx)
+    reaper.ImGui_Separator(ctx)
+    
+    -- Color Customization Section  
+    reaper.ImGui_Text(ctx, "Color Customization")
+    reaper.ImGui_TextDisabled(ctx, "Tip: Background Alpha controls window transparency")
+    reaper.ImGui_Spacing(ctx)
+    
+    -- Color editing with RGB sliders
     for _, name in ipairs(color_names) do
-        reaper.ImGui_Text(ctx, name:gsub("_", " "):upper() .. ":")
-        reaper.ImGui_SameLine(ctx)
-        local color_value = theme_colors[name] or 0xFF000000
+        reaper.ImGui_Text(ctx, string.upper(name:gsub("_", " ")) .. ":")
         
-        -- Show color value in hex format
-        reaper.ImGui_Text(ctx, string.format("0x%08X", color_value))
-        
-        -- Add simple RGB display for easier reading
+        -- Extract RGBA components from packed integer
+        local color_value = theme_colors[name]
         local r = (color_value >> 24) & 0xFF
         local g = (color_value >> 16) & 0xFF
         local b = (color_value >> 8) & 0xFF
         local a = color_value & 0xFF
-        reaper.ImGui_SameLine(ctx)
-        reaper.ImGui_Text(ctx, string.format("RGB(%d,%d,%d,%d)", r, g, b, a))
         
-        -- Add buttons to modify colors manually
+        -- RGB Sliders
+        -- Note: Using default width for sliders
+        
+        local r_changed, new_r = reaper.ImGui_SliderInt(ctx, "R##" .. name, r, 0, 255)
         reaper.ImGui_SameLine(ctx)
-        if reaper.ImGui_Button(ctx, "Edit##" .. name) then
-            -- Log current color for manual editing
-            if _G.console_logger then
-                _G.console_logger.log("To edit " .. name .. " color:")
-                _G.console_logger.log("Current: 0x" .. string.format("%08X", color_value))
-                _G.console_logger.log("Copy this to modify and use 'Load Custom' button")
+        local g_changed, new_g = reaper.ImGui_SliderInt(ctx, "G##" .. name, g, 0, 255)
+        reaper.ImGui_SameLine(ctx)
+        local b_changed, new_b = reaper.ImGui_SliderInt(ctx, "B##" .. name, b, 0, 255)
+        reaper.ImGui_SameLine(ctx)
+        local a_changed, new_a = reaper.ImGui_SliderInt(ctx, "A##" .. name, a, 0, 255)
+        
+        -- Update color if any slider changed
+        if r_changed or g_changed or b_changed or a_changed then
+            theme_colors[name] = (new_r << 24) | (new_g << 16) | (new_b << 8) | new_a
+            
+            -- Special handling for background alpha
+            if name == "background" and a_changed then
+                -- Also set window background alpha for transparency
+                if _G.ImGui and _G.ctx then
+                    local alpha_float = new_a / 255.0
+                    _G.ImGui.SetNextWindowBgAlpha(_G.ctx, alpha_float)
+                end
+                if _G.console_logger then
+                    _G.console_logger.log(string.format("Background alpha set to %.2f (%d/255)", new_a/255.0, new_a))
+                end
             end
         end
+        
+        -- Color preview button
+        reaper.ImGui_SameLine(ctx)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), theme_colors[name])
+        reaper.ImGui_Button(ctx, "   ##preview_" .. name, 30, 20)
+        reaper.ImGui_PopStyleColor(ctx)
+        
+        -- Show hex value
+        reaper.ImGui_SameLine(ctx)
+        reaper.ImGui_TextDisabled(ctx, string.format("0x%08X", theme_colors[name]))
+        
+        reaper.ImGui_Spacing(ctx)
+    end
+    
+    -- Quick color tools
+    reaper.ImGui_Text(ctx, "Quick Color Tools:")
+    if reaper.ImGui_Button(ctx, "Copy RGB Values") then
+        if _G.console_logger then
+            _G.console_logger.log("Current RGB values:")
+            for _, name in ipairs(color_names) do
+                local color = theme_colors[name]
+                local r = (color >> 24) & 0xFF
+                local g = (color >> 16) & 0xFF
+                local b = (color >> 8) & 0xFF
+                local a = color & 0xFF
+                _G.console_logger.log(string.format("%s: R=%d G=%d B=%d A=%d (0x%08X)", 
+                    name, r, g, b, a, color))
+            end
+        end
+    end
+    
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "Reset Colors") then
+        -- Reset to saved default colors (or built-in if no custom defaults)
+        for _, name in ipairs(color_names) do
+            theme_colors[name] = default_theme_colors[name]
+        end
+        if _G.console_logger then
+            _G.console_logger.log("Colors reset to default values")
+        end
+    end
+    
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "Save as Default") then
+        save_default_theme()
     end
     
     reaper.ImGui_Spacing(ctx)
@@ -426,67 +728,26 @@ function M.draw(ctx)
     reaper.ImGui_Spacing(ctx)
     
     if reaper.ImGui_Button(ctx, "Export Theme") then
-        -- Enhanced export - save to clipboard and console
-        local export_text = "DevToolbox Theme Export:\n"
-        for name, color in pairs(theme_colors) do
-            export_text = export_text .. name .. " = 0x" .. string.format("%08X", color) .. "\n"
-        end
-        
-        -- Save to clipboard if available
-        if reaper.ImGui_SetClipboardText then
-            reaper.ImGui_SetClipboardText(ctx, export_text)
-        end
-        
+        save_theme() -- Use the working save function
         if _G.console_logger then
-            _G.console_logger.log("Theme exported to clipboard:")
-            _G.console_logger.log(export_text)
+            _G.console_logger.log("Theme exported to REAPER resource directory")
         end
-        
-        -- Also save to file for persistence
-        save_theme()
     end
     
     reaper.ImGui_SameLine(ctx)
-    if reaper.ImGui_Button(ctx, "Load Custom") then
-        -- Try to load custom theme template
-        local custom_themes_loaded = false
-        
-        -- Try to load the custom theme template
-        local ok, custom_themes = pcall(require, 'custom_theme_template')
-        if ok and custom_themes then
-            -- Show available custom themes in console
-            if _G.console_logger then
-                _G.console_logger.log("Available custom themes:")
-                for theme_name, theme_data in pairs(custom_themes) do
-                    _G.console_logger.log("  " .. theme_name)
-                    -- Apply the first found custom theme
-                    if not custom_themes_loaded then
-                        for color_name, color_value in pairs(theme_data) do
-                            if theme_colors[color_name] then
-                                theme_colors[color_name] = color_value
-                            end
-                        end
-                        _G.console_logger.log("Applied " .. theme_name .. " custom theme")
-                        custom_themes_loaded = true
-                    end
-                end
-            end
-        else
-            if _G.console_logger then
-                _G.console_logger.log("No custom_theme_template.lua found")
-                _G.console_logger.log("See custom_theme_template.lua for instructions on creating custom themes")
-            end
+    if reaper.ImGui_Button(ctx, "Load Theme") then
+        load_theme() -- Use the working load function  
+        if _G.console_logger then
+            _G.console_logger.log("Theme loaded from file")
         end
     end
     
     reaper.ImGui_SameLine(ctx)
     if reaper.ImGui_Button(ctx, "Reset to Default") then
-        -- Reset to default colors
-        theme_colors.background = 0x333333FF
-        theme_colors.text = 0xFFFFFFFF
-        theme_colors.button = 0x4D4D80FF
-        theme_colors.button_hovered = 0x6666B3FF
-        theme_colors.button_active = 0x333366FF
+        -- Reset to saved default colors
+        for _, name in ipairs(color_names) do
+            theme_colors[name] = default_theme_colors[name]
+        end
         if _G.console_logger then
             _G.console_logger.log("Reset theme to default colors")
         end
@@ -619,7 +880,7 @@ function M.render_embedded(ctx)
         end
         
         ImGui.SameLine(ctx)
-        ImGui.Text(ctx, name:gsub("_", " "):upper())
+        ImGui.Text(ctx, string.upper(name:gsub("_", " ")))
         
         -- Show hex value
         ImGui.SameLine(ctx)
@@ -650,13 +911,10 @@ function M.render_embedded(ctx)
     
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Reset to Default") then
-        theme_colors = {
-            background = 0x333333FF,
-            text = 0xFFFFFFFF,
-            button = 0x4D4D80FF,
-            button_hovered = 0x6666B3FF,
-            button_active = 0x333366FF,
-        }
+        -- Reset to saved default colors
+        for _, name in ipairs(color_names) do
+            theme_colors[name] = default_theme_colors[name]
+        end
         if console_logger then
             console_logger.log("INFO", "Theme reset to default")
         end

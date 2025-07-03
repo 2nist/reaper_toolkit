@@ -1,3 +1,4 @@
+---@diagnostic disable: redundant-parameter
 #!/usr/bin/env lua
 -- enhanced_virtual_reaper.lua
 -- Comprehensive Virtual REAPER Environment for Advanced Script Testing

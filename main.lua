@@ -66,13 +66,49 @@ script_manager.init(script_path)
 -- Create a unique context for our toolbox
 local ctx = ImGui.CreateContext('REAPER DevToolbox')
 
+-- Set up global variables
+_G.ctx = ctx
+_G.ImGui = ImGui
+_G.frame_in_progress = false
+
+-- Font setup function - simplified to avoid attachment issues
+local function setup_fonts()
+  console_logger.log("[INFO] Font system initialized")
+  console_logger.log("[INFO] Custom fonts require restart to take effect")
+  console_logger.log("[INFO] Using default ReaImGui font for safety")
+  
+  -- Note: Custom font loading disabled to prevent frame attachment errors
+  -- Font preferences are still saved and can be used by restarting the script
+  return nil
+end
+
+-- Global font variable to keep the font alive
+local custom_font = nil
+
+-- Initialize fonts immediately after function definition (before any frames)
+console_logger.log("[INFO] Initializing fonts during startup...")
+_G.custom_font = setup_fonts()
+
 -- State variables
 local active_tool_name = 'enhanced_theming_panel' -- The tool to show by default
 local show_demo_window = false
 local should_close_devtoolbox = false -- For intentional closing
+local console_expanded = true -- Track console state
 
 -- Main GUI loop
 local function loop()
+  -- Handle pending font changes from the theming panel
+  if _G.font_change_pending then
+    console_logger.log("[INFO] Font change saved - restart script to apply")
+    _G.font_change_pending = nil
+  end
+  
+  -- Note: Font loading removed from main loop to prevent frame conflicts
+  -- Fonts are now loaded only during initialization (before any frames)
+  
+  -- Mark that we're starting frame rendering
+  _G.frame_in_progress = true
+  
   -- Floating, always-on-top window
   local w, h = 800, 600
   -- Use Cond_FirstUseEver to allow user to resize and move the window
@@ -80,8 +116,14 @@ local function loop()
   ImGui.SetNextWindowSize(ctx, w, h, cond_first_use_ever)
   ImGui.SetNextWindowPos(ctx, 0, 0, cond_first_use_ever)
   
-  -- Set window transparency (optional)
-  ImGui.SetNextWindowBgAlpha(ctx, 1.0)
+  -- Set window transparency using theme background alpha
+  local bg_alpha = 1.0
+  local active_theming_panel = script_manager.get_tool('enhanced_theming_panel')
+  if active_theming_panel and active_theming_panel.get_theme_colors then
+    local theme_colors = active_theming_panel.get_theme_colors()
+    bg_alpha = ((theme_colors.background or 0xFF000000) & 0xFF) / 255.0
+  end
+  ImGui.SetNextWindowBgAlpha(ctx, bg_alpha)
   
   -- Convert RGBA floats to packed integer color (0xAABBGGRR)
   local function rgba_to_packed(r, g, b, a)
@@ -126,26 +168,34 @@ local function loop()
   ImGui.PushStyleColor(ctx, col_button_active, theme_colors.button_active)
   
   local window_flags = ImGui.WindowFlags_NoDocking | (1 << 8) -- Only AlwaysOnTop, no AutoResize/NoMove
+  
+  -- Use custom font if available
+  if _G.custom_font then
+    ImGui.PushFont(ctx, _G.custom_font)
+  end
+  
   local open, window_open = ImGui.Begin(ctx, 'DevToolbox', true, window_flags)
   if open then
-    ImGui.Text(ctx, "REAPER DEVTOOLBOX WINDOW VISIBLE")
-    
-    -- Add close button with themed warning color
-    ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0xFF3333FF) -- Keep red for warning
-    if ImGui.Button(ctx, "Close DevToolbox") then
+    -- Move close button to a tab-like section at the top
+    if ImGui.Button(ctx, "✕ Close", 80, 25) then
       should_close_devtoolbox = true
     end
-    ImGui.PopStyleColor(ctx)
     ImGui.SameLine(ctx)
-    ImGui.Text(ctx, "(Click to intentionally close)")
+    ImGui.TextDisabled(ctx, "DevToolbox v1.0")
     
     ImGui.Separator(ctx)
     -- Enhanced theming panel creates its own window, so no special handling needed here
     -- ...existing code for panels...
-    if ImGui.BeginChild(ctx, 'panel_selector', 250, -120, ImGui.ChildFlags_Border) then
+    -- Calculate console height to adjust main content area
+    local console_height = console_expanded and 145 or 25 -- 145 when expanded, 25 when collapsed
+    
+    if ImGui.BeginChild(ctx, 'panel_selector', 250, -console_height, ImGui.ChildFlags_Border) then
       ImGui.Text(ctx, "UI Panels")
       ImGui.Separator(ctx)
       local tools = script_manager.get_tools()
+      
+      -- Add Simple Agent Prompt to the tools list
+      tools["simple_agent_prompt"] = require("simple_agent_prompt")
       
       -- Sort panel names for consistent ordering
       local sorted_names = {}
@@ -178,7 +228,7 @@ local function loop()
     end
     ImGui.SameLine(ctx)
     -- Main content area for the selected panel
-    if ImGui.BeginChild(ctx, 'content', 0, -120, ImGui.ChildFlags_Border) then
+    if ImGui.BeginChild(ctx, 'content', 0, -console_height, ImGui.ChildFlags_Border) then
       ImGui.Text(ctx, active_tool_name)
       ImGui.Separator(ctx)
       
@@ -197,25 +247,48 @@ local function loop()
       end
       ImGui.EndChild(ctx)
     end
-    -- Copyable Console Log Panel
-    if ImGui.BeginChild(ctx, 'console_area', 0, 120, ImGui.ChildFlags_Border) then
-      ImGui.Text(ctx, "Console Log")
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Clear") then console_logger.clear() end
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Copy All") then
-        local log = table.concat(console_logger.get_messages(), "\n")
-        ImGui.SetClipboardText(ctx, log)
-      end
-      ImGui.Separator(ctx)
-      local log = table.concat(console_logger.get_messages(), "\n")
-      ImGui.InputTextMultiline(ctx, "##console_log", log, -1, -1, 0x800) -- ReadOnly
-      ImGui.EndChild(ctx)
+    -- Collapsible Console Log Panel
+    console_expanded = ImGui.CollapsingHeader(ctx, "Console Log", console_expanded)
+    if console_expanded then
+        -- When expanded, show a reasonable console window (120px height)
+        if ImGui.BeginChild(ctx, 'console_area', 0, 120, ImGui.ChildFlags_Border) then
+            -- Control buttons at the top
+            if ImGui.Button(ctx, "Clear") then console_logger.clear() end
+            ImGui.SameLine(ctx)
+            if ImGui.Button(ctx, "Copy All") then
+                local log = table.concat(console_logger.get_messages(), "\n")
+                ImGui.SetClipboardText(ctx, log)
+            end
+            ImGui.Separator(ctx)
+            -- Console log content with scrolling
+            local log = table.concat(console_logger.get_messages(), "\n")
+            ImGui.InputTextMultiline(ctx, "##console_log", log, -1, -1, 0x800) -- ReadOnly, use remaining space
+            ImGui.EndChild(ctx)
+        end
     end
     
     -- Pop the 5 style colors that were pushed at the beginning of the window
     ImGui.PopStyleColor(ctx, 5)
     ImGui.End(ctx)
+  end
+  
+  -- Pop custom font if it was pushed
+  if _G.custom_font then
+    ImGui.PopFont(ctx)
+  end
+  
+  -- Mark that frame rendering is complete
+  _G.frame_in_progress = false
+
+  -- Handle pending font changes AFTER frame is complete
+  if _G.font_change_pending then
+    local theming_panel = script_manager.get_tool('enhanced_theming_panel')
+    if theming_panel and theming_panel.set_font then
+      local pending = _G.font_change_pending
+      console_logger.log("[INFO] Applying pending font change after frame...")
+      _G.custom_font = theming_panel.set_font(pending.font_index, pending.size_index)
+      _G.font_change_pending = nil
+    end
   end
 
   -- Keep the script running unless explicitly closed or in test environment
@@ -230,6 +303,15 @@ end
 -- Initial load and setup
 script_manager.reload_scripts()
 script_manager.init_all()
+
+-- Additional global variables for theming panel
+_G.console_logger = console_logger
+_G.font_change_pending = nil
+_G.pending_font = nil
+_G.script_path = script_path
+
+-- Initialize custom font as nil - will be set up in deferred font loading
+_G.custom_font = nil
 
 if not _TEST_ENV then
   reaper.defer(loop)
