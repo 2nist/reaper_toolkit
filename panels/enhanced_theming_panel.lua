@@ -76,17 +76,17 @@ local presets = {
     }
 }
 
--- Conversion helpers (same as demo.lua approach)
+-- Conversion helpers (Lua 5.1 compatible)
 local function packed_to_rgba(packed)
-    local r = (packed >> 24) & 0xFF
-    local g = (packed >> 16) & 0xFF
-    local b = (packed >> 8) & 0xFF
-    local a = packed & 0xFF
+    local a = math.floor(packed / 16777216) % 256  -- (packed >> 24) & 0xFF
+    local b = math.floor(packed / 65536) % 256     -- (packed >> 16) & 0xFF
+    local g = math.floor(packed / 256) % 256       -- (packed >> 8) & 0xFF
+    local r = packed % 256                         -- packed & 0xFF
     return r/255, g/255, b/255, a/255
 end
 
 local function rgba_to_packed(r, g, b, a)
-    return (math.floor(r*255) << 24) | (math.floor(g*255) << 16) | (math.floor(b*255) << 8) | math.floor(a*255)
+    return math.floor(a*255) * 16777216 + math.floor(b*255) * 65536 + math.floor(g*255) * 256 + math.floor(r*255)  -- (a<<24) | (b<<16) | (g<<8) | r
 end
 
 -- File operations
@@ -210,8 +210,24 @@ function M.render(ctx)
     ImGui.SameLine(ctx)
     help_marker(ctx, ImGui, "Left-click to open color picker.\nChanges apply to the main window in real-time.\nRGB values are shown in hex format for easy copying.")
     
+    -- Helper function to get ImGui flags with compatibility
+    local function get_imgui_flag(flag_name, fallback_value)
+        local flag = ImGui[flag_name]
+        if flag then
+            if type(flag) == "function" then
+                return flag()
+            else
+                return flag
+            end
+        end
+        return fallback_value
+    end
+
     -- Start a child window for better organization
-    if ImGui.BeginChild(ctx, "##colors", 0, 250, 2, 0x20000) then -- ChildFlags_Border, WindowFlags_AlwaysVerticalScrollbar
+    local child_flags = get_imgui_flag("ChildFlags_Border", 2)
+    local window_flags = get_imgui_flag("WindowFlags_AlwaysVerticalScrollbar", 0x20000)
+    
+    if ImGui.BeginChild(ctx, "##colors", 0, 250, child_flags) then
         ImGui.PushItemWidth(ctx, ImGui.GetFontSize(ctx) * -12)
         
         for _, name in ipairs(color_names) do
@@ -362,10 +378,10 @@ function M.draw(ctx)
         reaper.ImGui_Text(ctx, string.format("0x%08X", color_value))
         
         -- Add simple RGB display for easier reading
-        local r = (color_value >> 24) & 0xFF
-        local g = (color_value >> 16) & 0xFF
-        local b = (color_value >> 8) & 0xFF
-        local a = color_value & 0xFF
+        local r = math.floor(color_value / 16777216) % 256  -- (color_value >> 24) & 0xFF
+        local g = math.floor(color_value / 65536) % 256     -- (color_value >> 16) & 0xFF
+        local b = math.floor(color_value / 256) % 256       -- (color_value >> 8) & 0xFF
+        local a = color_value % 256                         -- color_value & 0xFF
         reaper.ImGui_SameLine(ctx)
         reaper.ImGui_Text(ctx, string.format("RGB(%d,%d,%d,%d)", r, g, b, a))
         
@@ -389,11 +405,11 @@ function M.draw(ctx)
         for _, name in ipairs(color_names) do
             if name ~= "text" then -- Don't darken text
                 local color = theme_colors[name]
-                local r = math.max(0, ((color >> 24) & 0xFF) - 30)
-                local g = math.max(0, ((color >> 16) & 0xFF) - 30)
-                local b = math.max(0, ((color >> 8) & 0xFF) - 30)
-                local a = color & 0xFF
-                theme_colors[name] = (r << 24) | (g << 16) | (b << 8) | a
+                local r = math.max(0, (math.floor(color / 16777216) % 256) - 30)  -- ((color >> 24) & 0xFF) - 30
+                local g = math.max(0, (math.floor(color / 65536) % 256) - 30)     -- ((color >> 16) & 0xFF) - 30
+                local b = math.max(0, (math.floor(color / 256) % 256) - 30)       -- ((color >> 8) & 0xFF) - 30
+                local a = color % 256                                             -- color & 0xFF
+                theme_colors[name] = a * 16777216 + b * 65536 + g * 256 + r       -- (r << 24) | (g << 16) | (b << 8) | a
             end
         end
         if _G.console_logger then
@@ -406,11 +422,11 @@ function M.draw(ctx)
         for _, name in ipairs(color_names) do
             if name ~= "text" then -- Don't lighten text
                 local color = theme_colors[name]
-                local r = math.min(255, ((color >> 24) & 0xFF) + 30)
-                local g = math.min(255, ((color >> 16) & 0xFF) + 30)
-                local b = math.min(255, ((color >> 8) & 0xFF) + 30)
-                local a = color & 0xFF
-                theme_colors[name] = (r << 24) | (g << 16) | (b << 8) | a
+                local r = math.min(255, (math.floor(color / 16777216) % 256) + 30)  -- ((color >> 24) & 0xFF) + 30
+                local g = math.min(255, (math.floor(color / 65536) % 256) + 30)     -- ((color >> 16) & 0xFF) + 30
+                local b = math.min(255, (math.floor(color / 256) % 256) + 30)       -- ((color >> 8) & 0xFF) + 30
+                local a = color % 256                                               -- color & 0xFF
+                theme_colors[name] = a * 16777216 + b * 65536 + g * 256 + r         -- (r << 24) | (g << 16) | (b << 8) | a
             end
         end
         if _G.console_logger then
@@ -526,11 +542,11 @@ function M.draw(ctx)
         local btn_h_r, btn_h_g, btn_h_b = hsl_to_rgb(base_hue, 0.7, 0.5) -- Brighter hover
         local btn_a_r, btn_a_g, btn_a_b = hsl_to_rgb(base_hue, 0.8, 0.3) -- Darker active
         
-        theme_colors.background = (bg_r << 24) | (bg_g << 16) | (bg_b << 8) | 0xFF
-        theme_colors.text = (text_r << 24) | (text_g << 16) | (text_b << 8) | 0xFF
-        theme_colors.button = (btn_r << 24) | (btn_g << 16) | (btn_b << 8) | 0xFF
-        theme_colors.button_hovered = (btn_h_r << 24) | (btn_h_g << 16) | (btn_h_b << 8) | 0xFF
-        theme_colors.button_active = (btn_a_r << 24) | (btn_a_g << 16) | (btn_a_b << 8) | 0xFF
+        theme_colors.background = 0xFF * 16777216 + bg_b * 65536 + bg_g * 256 + bg_r    -- (bg_r << 24) | (bg_g << 16) | (bg_b << 8) | 0xFF
+        theme_colors.text = 0xFF * 16777216 + text_b * 65536 + text_g * 256 + text_r      -- (text_r << 24) | (text_g << 16) | (text_b << 8) | 0xFF
+        theme_colors.button = 0xFF * 16777216 + btn_b * 65536 + btn_g * 256 + btn_r        -- (btn_r << 24) | (btn_g << 16) | (btn_b << 8) | 0xFF
+        theme_colors.button_hovered = 0xFF * 16777216 + btn_h_b * 65536 + btn_h_g * 256 + btn_h_r  -- (btn_h_r << 24) | (btn_h_g << 16) | (btn_h_b << 8) | 0xFF
+        theme_colors.button_active = 0xFF * 16777216 + btn_a_b * 65536 + btn_a_g * 256 + btn_a_r   -- (btn_a_r << 24) | (btn_a_g << 16) | (btn_a_b << 8) | 0xFF
         
         if _G.console_logger then
             _G.console_logger.log(string.format("Random theme generated with base hue %.1f°", base_hue))
@@ -666,7 +682,7 @@ function M.render_embedded(ctx)
     if ImGui.Button(ctx, "🎲 Generate Random") then
         -- Generate random theme colors
         local function random_color()
-            return (math.random(0, 255) << 24) | (math.random(0, 255) << 16) | (math.random(0, 255) << 8) | 0xFF
+            return 0xFF * 16777216 + math.random(0, 255) * 65536 + math.random(0, 255) * 256 + math.random(0, 255)  -- (r << 24) | (g << 16) | (b << 8) | 0xFF
         end
         
         -- Generate a random base color for cohesion
@@ -702,11 +718,11 @@ function M.render_embedded(ctx)
         local btn_a_r, btn_a_g, btn_a_b = hsl_to_rgb(base_hue, 0.8, 0.3) -- Darker active
         
         theme_colors = {
-            background = (bg_r << 24) | (bg_g << 16) | (bg_b << 8) | 0xFF,
-            text = (text_r << 24) | (text_g << 16) | (text_b << 8) | 0xFF,
-            button = (btn_r << 24) | (btn_g << 16) | (btn_b << 8) | 0xFF,
-            button_hovered = (btn_h_r << 24) | (btn_h_g << 16) | (btn_h_b << 8) | 0xFF,
-            button_active = (btn_a_r << 24) | (btn_a_g << 16) | (btn_a_b << 8) | 0xFF,
+            background = 0xFF * 16777216 + bg_b * 65536 + bg_g * 256 + bg_r,      -- (bg_r << 24) | (bg_g << 16) | (bg_b << 8) | 0xFF
+            text = 0xFF * 16777216 + text_b * 65536 + text_g * 256 + text_r,        -- (text_r << 24) | (text_g << 16) | (text_b << 8) | 0xFF
+            button = 0xFF * 16777216 + btn_b * 65536 + btn_g * 256 + btn_r,         -- (btn_r << 24) | (btn_g << 16) | (btn_b << 8) | 0xFF
+            button_hovered = 0xFF * 16777216 + btn_h_b * 65536 + btn_h_g * 256 + btn_h_r,  -- (btn_h_r << 24) | (btn_h_g << 16) | (btn_h_b << 8) | 0xFF
+            button_active = 0xFF * 16777216 + btn_a_b * 65536 + btn_a_g * 256 + btn_a_r,   -- (btn_a_r << 24) | (btn_a_g << 16) | (btn_a_b << 8) | 0xFF
         }
         
         if console_logger then
@@ -800,5 +816,13 @@ function M.create_themed_imgui_wrapper(base_imgui)
         end
     })
 end
+
+-- Tool metadata
+M.metadata = {
+    label = "Enhanced Theming",
+    icon = "🎨",
+    category = "UI",
+    active = true
+}
 
 return M

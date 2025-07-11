@@ -42,4 +42,12 @@ function M.shutdown()
     -- Cleanup
 end
 
+-- Tool metadata
+M.metadata = {
+    label = "Style Editor",
+    icon = "✏",
+    category = "UI",
+    active = false
+}
+
 return M

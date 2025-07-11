@@ -1,0 +1,136 @@
+Table of Contents
+
+Overview
+
+Font Manager API
+
+Initializing the ImGui Context
+
+Loading and Attaching a Font
+
+Using the Loaded Font in Panels
+
+Error Handling
+
+Example Implementation
+
+Best Practices
+
+Overview
+
+Custom fonts greatly enhance the visual appeal and readability of UI elements. To support them, DevToolbox UI scripts must:
+
+Create and attach fonts immediately after creating the ImGui context.
+
+Push and pop the custom font around draw calls to render text correctly.
+
+This guide describes the steps, code patterns, and API calls required.
+
+Font Manager API
+
+The font_manager module provides the following key functions:
+
+font_manager.get_current_font()Returns a tuple (font_info, size), where font_info includes the font name and path, and size is the pixel size.
+
+font_manager.create_font(font_info, size, ctx)Creates and caches an ImGui font instance. Attaches it to ctx if supported. Returns font_inst or nil on failure.
+
+font_manager.test_font_creation(font_info, size)Diagnostic helper to verify if a font file can be loaded.
+
+Initializing the ImGui Context
+
+In your main.lua, wrap context creation and font attachment in an ensure_context() function:
+
+local function ensure_context()
+    local ctx = reaper.ImGui_CreateContext('DevToolbox')
+    -- Load and attach the default or user-selected font
+    local font_info, size = font_manager.get_current_font()
+    local font_inst = font_manager.create_font(font_info, size, ctx)
+    if not font_inst then
+        reaper.MB("Failed to load font: "..font_info.name, "Font Error", 0)
+    end
+    return ctx
+end
+
+Call ensure_context() before any UI is drawn.
+
+Loading and Attaching a Font
+
+Invoke font_manager.get_current_font() to retrieve the desired font and size.
+
+Invoke font_manager.create_font(...) passing the ImGui context.
+
+Cache the returned font_inst for reuse.
+
+local font_info, size = font_manager.get_current_font()
+local font_inst = font_manager.create_font(font_info, size, ctx)
+
+This step must occur before any ImGui windows are created to ensure the font is registered.
+
+Using the Loaded Font in Panels
+
+Wrap any drawing calls with PushFont and PopFont:
+
+-- Assuming `ctx` and `font_inst` are available
+if font_inst then
+    reaper.ImGui_PushFont(ctx, font_inst)
+end
+
+-- Draw UI elements with custom font
+reaper.ImGui_Text(ctx, "Sample text using custom font")
+
+if font_inst then
+    reaper.ImGui_PopFont(ctx)
+end
+
+Apply this pattern for all text-centric UI functions (Text, TextWrapped, Button, etc.) where custom font is desired.
+
+Error Handling
+
+If create_font returns nil, display a message box and fallback to default font.
+
+Use font_manager.test_font_creation() during development to verify font files.
+
+local ok = font_manager.test_font_creation(font_info, size)
+if not ok then
+    reaper.MB("Unable to load font file: "..font_info.path, "Font Test Failed", 0)
+end
+
+Example Implementation
+
+local font_manager = require 'font_manager'
+
+-- Main entry
+local function main()
+    -- Create context and attach font
+    local ctx = ensure_context()
+
+    -- UI loop
+    while reaper.ImGui_IsWindowOpen(ctx) do
+        reaper.ImGui_NewFrame(ctx)
+        
+        -- Draw panel with custom font
+        local font_info, size = font_manager.get_current_font()
+        local font_inst = font_manager.create_font(font_info, size, ctx)
+        if font_inst then reaper.ImGui_PushFont(ctx, font_inst) end
+        reaper.ImGui_Text(ctx, "Hello, DevToolbox!")
+        if font_inst then reaper.ImGui_PopFont(ctx) end
+
+        reaper.ImGui_EndFrame(ctx)
+    end
+end
+
+main()
+
+Best Practices
+
+Early attachment: Always attach fonts immediately after context creation.
+
+Minimal scope: Push/pop fonts only around necessary draw calls.
+
+Caching: Avoid recreating font instances each frame; cache by font key.
+
+Diagnostics: Provide a debug panel to test different font files at runtime.
+
+User feedback: Gracefully handle load failures with informative messages.
+
+With this guide, agents and users can reliably load and render custom fonts in the DevToolbox UI. Ensure these patterns are followed consistently across

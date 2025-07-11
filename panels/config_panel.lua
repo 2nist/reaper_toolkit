@@ -5,6 +5,8 @@ local M = {}
 
 local theme_manager -- will be loaded in init
 local font_manager -- will be loaded in init
+local script_manager -- will be loaded in init
+local console_logger -- will be loaded in init
 
 -- UI state variables
 local selected_font_index = 1
@@ -22,72 +24,35 @@ function M.init()
     if ok then
         theme_manager = tm
         theme_manager.init()
+        print("Theme manager loaded successfully")
+    else
+        print("Theme manager failed to load:", tm)
     end
     
     -- Load font manager for font configuration
-    local font_manager_paths = {
-        'font_manager_working',      -- New working version
-        'font_manager_simple',       
-        'font_manager_v2',
-        'font_manager',
-        'modules/font_manager_working',
-        'modules/font_manager_simple',
-        'modules/font_manager_v2',
-        'modules/font_manager',
-        '../modules/font_manager_working',
-        '../modules/font_manager_simple',
-        '../modules/font_manager_v2',
-        '../modules/font_manager'
-    }
-    
-    for _, path in ipairs(font_manager_paths) do
-        local ok_font, fm = pcall(require, path)
-        if ok_font then
-            font_manager = fm
-            local init_ok, init_err = pcall(font_manager.init)
-            if init_ok then
-                print("Font manager loaded successfully from:", path)
-                break
+    print("Attempting to load font manager...")
+    local ok_font, fm = pcall(require, 'font_manager')
+    if ok_font and fm then
+        font_manager = fm
+        print("Font manager module loaded, attempting init...")
+        local init_ok, init_err = pcall(font_manager.init)
+        if init_ok then
+            print("✅ Font manager loaded and initialized successfully")
+            
+            -- Test basic functionality
+            local fonts_ok, fonts = pcall(font_manager.get_available_fonts)
+            if fonts_ok and fonts then
+                print("✅ Found", #fonts, "available fonts")
             else
-                print("Font manager init error:", init_err)
+                print("❌ Failed to get available fonts:", fonts)
             end
         else
-            print("Font manager load attempt failed for path:", path, "Error:", fm)
+            print("❌ Font manager init error:", init_err)
+            font_manager = nil
         end
-    end
-    
-    -- If require failed, try direct dofile approach
-    if not font_manager then
-        local script_path = debug.getinfo(1,'S').source:match("@?(.*)")
-        if script_path then
-            local script_dir = script_path:match("(.*/)")
-            if script_dir then
-                local font_manager_files = {
-                    script_dir .. "../modules/font_manager_working.lua",
-                    script_dir .. "../modules/font_manager_simple.lua",
-                    script_dir .. "../modules/font_manager_v2.lua", 
-                    script_dir .. "../modules/font_manager.lua"
-                }
-                
-                for _, font_manager_file in ipairs(font_manager_files) do
-                    print("Trying dofile approach:", font_manager_file)
-                    local ok_dofile, fm = pcall(dofile, font_manager_file)
-                    if ok_dofile and fm then
-                        font_manager = fm
-                        local init_ok, init_err = pcall(font_manager.init)
-                        if init_ok then
-                            print("Font manager loaded via dofile:", font_manager_file)
-                            break
-                        else
-                            print("Font manager dofile init error:", init_err)
-                            font_manager = nil
-                        end
-                    else
-                        print("Dofile failed for", font_manager_file, ":", fm)
-                    end
-                end
-            end
-        end
+    else
+        print("❌ Font manager failed to load:", fm)
+        font_manager = nil
     end
     
     if font_manager then
@@ -111,12 +76,36 @@ function M.init()
             end
         end
         
-        -- Check ReaImGui font API availability
-        if font_manager.check_font_api then
-            font_manager.check_font_api()
-        end
+        print("Config panel initialization complete")
     else
         print("Font manager could not be loaded from any path")
+    end
+    
+    -- Load script manager for live reload functionality
+    print("Attempting to load script manager...")
+    local ok_script, sm = pcall(require, 'script_manager')
+    if ok_script and sm then
+        script_manager = sm
+        print("✅ Script manager loaded successfully")
+    else
+        print("❌ Script manager failed to load:", sm)
+        script_manager = nil
+    end
+    
+    -- Load console logger for diagnostics
+    print("Attempting to load console logger...")
+    local ok_console, cl = pcall(require, 'console_logger')
+    if ok_console and cl then
+        console_logger = cl
+        print("✅ Console logger loaded successfully")
+    else
+        print("❌ Console logger failed to load:", cl)
+        -- Create a fallback logger
+        console_logger = {
+            log = function(msg) print("[LOG] " .. tostring(msg)) end,
+            clear = function() end,
+            get_messages = function() return {} end
+        }
     end
 end
 
@@ -180,77 +169,210 @@ function M.draw(ctx)
         
         ImGui.Separator(ctx)
         
-        -- Font Selection
-        local fonts = font_manager.get_available_fonts()
-        local font_names_string = ""
-        for i, font in ipairs(fonts) do
-            font_names_string = font_names_string .. font.name
-            if i < #fonts then
-                font_names_string = font_names_string .. "\0"
+        -- Font Selection with better error handling
+        local fonts = {}
+        local fonts_ok, fonts_err = pcall(font_manager.get_available_fonts)
+        if fonts_ok and fonts_err then
+            fonts = fonts_err
+        else
+            fonts = {
+                { name = "Default ImGui", family = "default", description = "Built-in ImGui font" },
+                { name = "System Default", family = "system", description = "System default font" }
+            }
+            if not fonts_ok then
+                status_message = "⚠️ Font loading issue: " .. tostring(fonts_err)
+                status_timer = 300
             end
         end
-        -- Add final null terminator
+        
         if #fonts > 0 then
+            local font_names_string = ""
+            for i, font in ipairs(fonts) do
+                font_names_string = font_names_string .. font.name
+                if i < #fonts then
+                    font_names_string = font_names_string .. "\0"
+                end
+            end
+            -- Add final null terminator
             font_names_string = font_names_string .. "\0"
-        end
-        
-        local changed_font = false
-        if #fonts > 0 then
-            changed_font, selected_font_index = ImGui.Combo(ctx, "Font Family", selected_font_index - 1, font_names_string)
-            selected_font_index = selected_font_index + 1 -- Convert back to 1-based indexing
-        end
-        
-        -- Font Size Selection
-        local sizes = font_manager.get_font_sizes()
-        local size_names_string = ""
-        for i, size in ipairs(sizes) do
-            size_names_string = size_names_string .. tostring(size) .. "px"
-            if i < #sizes then
-                size_names_string = size_names_string .. "\0"
+            
+            local changed_font, new_font_index = ImGui.Combo(ctx, "Font Family", selected_font_index - 1, font_names_string)
+            if changed_font then
+                selected_font_index = new_font_index + 1 -- Convert back to 1-based indexing
             end
+        else
+            ImGui.Text(ctx, "❌ No fonts available")
         end
-        -- Add final null terminator
+        
+        -- Font Size Selection with better layout
+        local sizes = {}
+        local sizes_ok, sizes_err = pcall(font_manager.get_font_sizes)
+        if sizes_ok and sizes_err then
+            sizes = sizes_err
+        else
+            sizes = { 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28, 32 }
+        end
+        
         if #sizes > 0 then
+            local size_names_string = ""
+            for i, size in ipairs(sizes) do
+                size_names_string = size_names_string .. tostring(size) .. "px"
+                if i < #sizes then
+                    size_names_string = size_names_string .. "\0"
+                end
+            end
+            -- Add final null terminator
             size_names_string = size_names_string .. "\0"
+            
+            local changed_size, new_size_index = ImGui.Combo(ctx, "Font Size", selected_size_index - 1, size_names_string)
+            if changed_size then
+                selected_size_index = new_size_index + 1 -- Convert back to 1-based indexing
+            end
+        else
+            ImGui.Text(ctx, "❌ No font sizes available")
         end
         
-        local changed_size = false
-        if #sizes > 0 then
-            changed_size, selected_size_index = ImGui.Combo(ctx, "Font Size", selected_size_index - 1, size_names_string)
-            selected_size_index = selected_size_index + 1 -- Convert back to 1-based indexing
-        end
-        
-        -- Apply font changes
+        -- Apply font changes with better validation
         if (changed_font or changed_size) and fonts[selected_font_index] and sizes[selected_size_index] then
-            font_manager.set_current_font(fonts[selected_font_index], sizes[selected_size_index])
-            status_message = "✅ Font settings saved!"
-            status_timer = 180 -- Show for 3 seconds at 60fps
+            local selected_font = fonts[selected_font_index]
+            local selected_size = sizes[selected_size_index]
+            
+            local save_ok, save_err = pcall(font_manager.set_current_font, selected_font, selected_size)
+            if save_ok then
+                status_message = "✅ Font settings saved: " .. selected_font.name .. " @ " .. selected_size .. "px"
+                status_timer = 180
+            else
+                status_message = "❌ Failed to save font: " .. tostring(save_err)
+                status_timer = 300
+            end
         end
         
         ImGui.Spacing(ctx)
         
-        -- Font preview
+        -- Font preview with live testing
         if fonts[selected_font_index] and sizes[selected_size_index] then
-            ImGui.Text(ctx, "Preview:")
-            ImGui.SameLine(ctx)
+            ImGui.Spacing(ctx)
+            ImGui.Text(ctx, "Font Preview:")
+            ImGui.Separator(ctx)
             
-            -- Debug info
             local selected_font = fonts[selected_font_index]
             local selected_size = sizes[selected_size_index]
-            print("Font preview attempt:", selected_font.name, "size:", selected_size)
             
-            -- Try to create and apply the selected font for preview
-            local preview_font = font_manager.load_font(selected_font, selected_size, ctx)
-            if preview_font then
-                print("Preview font loaded successfully")
-                font_manager.use_font(ctx, preview_font, function()
-                    ImGui.Text(ctx, "The quick brown fox jumps over the lazy dog 🦊")
-                end)
-            else
-                print("Preview font failed - using default")
-                ImGui.Text(ctx, "Font preview: " .. selected_font.name .. " @ " .. selected_size .. "px")
-                ImGui.Text(ctx, "The quick brown fox jumps over the lazy dog 🦊")
+            -- Font information display
+            ImGui.BulletText(ctx, "Name: " .. selected_font.name)
+            ImGui.BulletText(ctx, "Size: " .. selected_size .. "px")
+            if selected_font.description then
+                ImGui.BulletText(ctx, "Type: " .. selected_font.description)
             end
+            if selected_font.path then
+                ImGui.BulletText(ctx, "Source: Custom font file")
+                ImGui.BulletText(ctx, "Path: " .. selected_font.path)
+            else
+                ImGui.BulletText(ctx, "Source: System font")
+            end
+            
+            ImGui.Spacing(ctx)
+            
+            -- Live font preview
+            ImGui.Text(ctx, "Preview Text:")
+            local preview_text = "The quick brown fox jumps over the lazy dog 🦊\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%^&*()"
+            
+            -- Simple preview without font switching to avoid attachment issues
+            ImGui.TextWrapped(ctx, preview_text)
+            
+            -- Show font status without actually switching fonts
+            if selected_font.path then
+                -- Test font loading capability without using it
+                local font_test_ok, font_message = font_manager.test_font_creation(selected_font, selected_size)
+                if font_test_ok then
+                    ImGui.TextColored(ctx, 0x00FF00FF, "✅ " .. font_message)
+                else
+                    ImGui.TextColored(ctx, 0xFF8800FF, "⚠️ " .. font_message)
+                end
+            else
+                ImGui.TextColored(ctx, 0x888888FF, "ℹ️ System font (rendered with default font)")
+            end
+            
+            ImGui.Spacing(ctx)
+            
+            -- Test button for font functionality using safe testing
+            if ImGui.Button(ctx, "🧪 Test Font Loading") then
+                local test_ok, test_message = font_manager.test_font_creation(selected_font, selected_size)
+                if test_ok then
+                    status_message = "✅ " .. test_message
+                else
+                    status_message = "❌ " .. test_message
+                end
+                status_timer = 300
+            end
+        end
+        
+        ImGui.Spacing(ctx)
+        
+        -- Advanced font management and diagnostics
+        ImGui.Separator(ctx)
+        ImGui.Text(ctx, "🔧 Advanced Tools:")
+        
+        if ImGui.Button(ctx, "📊 System Diagnostics") then
+            console_logger.log("=== FONT SYSTEM DIAGNOSTICS ===")
+            console_logger.log("REAPER available: " .. tostring(reaper ~= nil))
+            if reaper then
+                console_logger.log("REAPER version: " .. (reaper.GetAppVersion() or "Unknown"))
+                console_logger.log("ImGui_CreateFont available: " .. tostring(reaper.ImGui_CreateFont ~= nil))
+                console_logger.log("ImGui_CreateContext available: " .. tostring(reaper.ImGui_CreateContext ~= nil))
+            end
+            console_logger.log("Font manager loaded: " .. tostring(font_manager ~= nil))
+            if font_manager then
+                local cache_info = font_manager.get_cache_info()
+                console_logger.log("Font cache entries: " .. tostring(cache_info.count))
+                console_logger.log("Fonts directory: " .. tostring(font_manager.get_fonts_directory()))
+            end
+            console_logger.log("Current working directory: " .. (reaper and reaper.GetResourcePath() or "Unknown"))
+            console_logger.log("===============================")
+            status_message = "📊 Diagnostics logged to console"
+            status_timer = 180
+        end
+        
+        ImGui.SameLine(ctx)
+        if ImGui.Button(ctx, "🧹 Clear Font Cache") then
+            if font_manager and font_manager.clear_font_cache then
+                local cleared = font_manager.clear_font_cache()
+                status_message = "🧹 Font cache cleared (" .. cleared .. " items)"
+                status_timer = 180
+            else
+                status_message = "❌ Font cache clear not available"
+                status_timer = 180
+            end
+        end
+        
+        -- Live reload test
+        ImGui.Spacing(ctx)
+        if ImGui.Button(ctx, "🔄 Test Live Reload") then
+            if script_manager and script_manager.reload_scripts_live then
+                script_manager.reload_scripts_live()
+                status_message = "🔄 Live reload executed"
+                status_timer = 180
+            else
+                status_message = "❌ Live reload not available"
+                status_timer = 180
+            end
+        end
+        
+        ImGui.SameLine(ctx)
+        if ImGui.Button(ctx, "📋 Copy Debug Info") then
+            local debug_info = "DevToolbox Debug Info:\n"
+            debug_info = debug_info .. "- REAPER: " .. tostring(reaper ~= nil) .. "\n"
+            if reaper then
+                debug_info = debug_info .. "- REAPER Version: " .. (reaper.GetAppVersion() or "Unknown") .. "\n"
+            end
+            debug_info = debug_info .. "- Font Manager: " .. tostring(font_manager ~= nil) .. "\n"
+            debug_info = debug_info .. "- Script Manager: " .. tostring(script_manager ~= nil) .. "\n"
+            debug_info = debug_info .. "- Available Fonts: " .. #fonts .. "\n"
+            debug_info = debug_info .. "- Available Sizes: " .. #sizes .. "\n"
+            
+            ImGui.SetClipboardText(ctx, debug_info)
+            status_message = "📋 Debug info copied to clipboard"
+            status_timer = 180
         end
         
         ImGui.Spacing(ctx)
@@ -272,7 +394,7 @@ function M.draw(ctx)
         ImGui.SameLine(ctx)
         if ImGui.Button(ctx, "Install Font") then
             if font_path_buffer and font_path_buffer ~= "" then
-                local success, message = font_manager.install_font(font_path_buffer)
+                local success, message = font_manager.install_ttf_from_path(font_path_buffer)
                 status_message = success and ("✅ " .. message) or ("❌ " .. message)
                 status_timer = 300 -- Show for 5 seconds
                 
@@ -415,5 +537,13 @@ end
 
 function M.shutdown()
 end
+
+-- Tool metadata
+M.metadata = {
+    label = "Config Panel",
+    icon = "⚙",
+    category = "Configuration",
+    active = true
+}
 
 return M

@@ -12,6 +12,12 @@ end
 function M.draw(ctx)
     -- This function is called on every frame to draw the UI.
     -- 'ctx' is the ReaImGui context.
+    
+    -- Validate context before proceeding
+    if not ctx then
+        return
+    end
+    
     local ImGui
     if reaper and reaper.ImGui_CreateContext then
       ImGui = setmetatable({}, {
@@ -24,10 +30,21 @@ function M.draw(ctx)
     else
       ImGui = require 'imgui' '0.9.2'
     end
-    ImGui.Text(ctx, "This is the template tool.")
-    ImGui.BulletText(ctx, "You can copy this file to create a new tool.")
-    if ImGui.Button(ctx, "Click Me") then
-        reaper.ShowConsoleMsg("Template Tool button clicked!\n")
+    
+    -- Use pcall to protect against context errors
+    local ok, err = pcall(function()
+        ImGui.Text(ctx, "This is the template tool.")
+        ImGui.BulletText(ctx, "You can copy this file to create a new tool.")
+        if ImGui.Button(ctx, "Click Me") then
+            reaper.ShowConsoleMsg("Template Tool button clicked!\n")
+        end
+    end)
+    
+    if not ok then
+        -- Fallback display if context is corrupted
+        if reaper then
+            reaper.ShowConsoleMsg("Template Tool: ImGui context error: " .. tostring(err) .. "\n")
+        end
     end
 end
 
@@ -36,5 +53,13 @@ function M.shutdown()
     -- Use it for cleanup.
     reaper.ShowConsoleMsg("Template Tool Shutdown\n")
 end
+
+-- Tool metadata
+M.metadata = {
+    label = "📋 Template Tool",
+    icon = "📋",
+    category = "Development",
+    active = true
+}
 
 return M

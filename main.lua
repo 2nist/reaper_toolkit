@@ -1,8 +1,5 @@
--- REAPER DevToolbox
--- Main entry point. Run this script from the REAPER Action List.
---
--- This script sets up a development environment for creating and testing
--- other ReaImGui scripts (tools/modules) for REAPER.
+-- REAPER DevToolbox - Final Fixed Version
+-- Main entry point with proper ImGui context management
 
 -- Set up package paths to find our modules and scripts
 local info = debug.getinfo(1, 'S')
@@ -11,241 +8,250 @@ local reaimgui_path_segment = ''
 if reaper and reaper.ImGui_GetBuiltinPath then
     reaimgui_path_segment = reaper.ImGui_GetBuiltinPath() .. '/?.lua;'
 end
-package.path = reaimgui_path_segment .. script_path .. 'modules/?.lua;' .. script_path .. 'panels/?.lua;' .. script_path .. 'utils/?.lua;' .. package.path
+package.path = reaimgui_path_segment .. script_path .. '?.lua;' .. script_path .. 'modules/?.lua;' .. script_path .. 'panels/?.lua;' .. script_path .. 'utils/?.lua;' .. package.path
 
--- Check for ReaImGui
-
--- Compatibility shim: use reaper.ImGui_* if available (EnviREAment), else require 'imgui'
--- Bitwise OR helper for flags (Lua 5.3+)
-local function bor(a, b) return (a | b) end
-local ImGui
-if reaper and reaper.ImGui_CreateContext then
-  ImGui = setmetatable({}, {
-    __index = function(t, k)
-      local v = reaper["ImGui_" .. k]
-      if v ~= nil then return v end
-      return rawget(t, k)
-    end
-  })
-  -- Provide missing constants for compatibility
-  ImGui.Cond_Once = type(reaper.ImGui_Cond_Once) == "number" and reaper.ImGui_Cond_Once or 1
-  ImGui.WindowFlags_MenuBar = type(reaper.ImGui_WindowFlags_MenuBar) == "number" and reaper.ImGui_WindowFlags_MenuBar or 16
-  ImGui.ChildFlags_Border = type(reaper.ImGui_ChildFlags_Border) == "number" and reaper.ImGui_ChildFlags_Border or 2
-  ImGui.WindowFlags_NoDocking = type(reaper.ImGui_WindowFlags_NoDocking) == "number" and reaper.ImGui_WindowFlags_NoDocking or 8192
-  ImGui.Col_Text = type(reaper.ImGui_Col_Text) == "number" and reaper.ImGui_Col_Text or 0
-  ImGui.Col_WindowBg = type(reaper.ImGui_Col_WindowBg) == "number" and reaper.ImGui_Col_WindowBg or 2
-  ImGui.Col_Button = type(reaper.ImGui_Col_Button) == "number" and reaper.ImGui_Col_Button or 21
-else
-  ImGui = require 'imgui' '0.9.2'
-  if not ImGui then
+-- Check for REAPER and ImGui availability
+if not reaper or not reaper.ImGui_CreateContext then
+  if reaper then
     reaper.MB("ReaImGui not found. Please install ReaImGui from ReaPack.", "Error", 0)
-    return
   end
-  -- Provide missing constants for compatibility
-  ImGui.Cond_Once = ImGui.Cond_Once or 1
-  ImGui.WindowFlags_MenuBar = ImGui.WindowFlags_MenuBar or 16
-  ImGui.ChildFlags_Border = ImGui.ChildFlags_Border or 2
-  ImGui.WindowFlags_NoDocking = ImGui.WindowFlags_NoDocking or 8192
-  ImGui.Col_Text = ImGui.Col_Text or 0
-  ImGui.Col_WindowBg = ImGui.Col_WindowBg or 2
-  ImGui.Col_Button = ImGui.Col_Button or 21
-  ImGui.WindowFlags_NoDocking = ImGui.WindowFlags_NoDocking or 8192
-  ImGui.Col_Text = ImGui.Col_Text or 0
+  return
 end
 
 -- Load core modules
 local script_manager = require 'script_manager'
 local console_logger = require 'console_logger'
-local demo -- for the demo window, loaded on demand
 
--- Initialize script manager with the correct path
--- Initialize the script manager with the base path so it can locate and manage tools/scripts
+-- Initialize script manager
 script_manager.init(script_path)
 
+-- Context and state variables
+local ctx = nil
+local should_close_devtoolbox = false
+local active_tool_name = 'enhanced_theming_panel'
+local show_reload_confirm = false
 
--- Create a unique context for our toolbox
-local ctx = ImGui.CreateContext('REAPER DevToolbox')
+-- Dock layout path
+local dock_path = reaper.GetResourcePath() .. "/DevToolbox_dock.ini"
 
--- State variables
-local active_tool_name = 'enhanced_theming_panel' -- The tool to show by default
-local show_demo_window = false
-local should_close_devtoolbox = false -- For intentional closing
+-- Context creation (once only)
+local function ensure_context()
+  if not ctx then
+    ctx = reaper.ImGui_CreateContext('REAPER DevToolbox')
+    if ctx then
+      console_logger.log("ImGui context created: " .. tostring(ctx))
+      _G.devtoolbox_ctx = ctx
+      
+      -- Load dock layout
+      if reaper.ImGui_LoadIniSettingsFromDisk then
+        reaper.ImGui_LoadIniSettingsFromDisk(ctx, dock_path)
+      end
+      
+      return true
+    else
+      console_logger.log("Failed to create ImGui context")
+      return false
+    end
+  end
+  return true
+end
 
--- Main GUI loop
+-- Main GUI loop with proper frame structure
 local function loop()
-  -- Floating, always-on-top window
-  local w, h = 800, 600
-  -- Use Cond_FirstUseEver to allow user to resize and move the window
-  local cond_first_use_ever = ImGui.Cond_FirstUseEver and ImGui.Cond_FirstUseEver() or 4
-  ImGui.SetNextWindowSize(ctx, w, h, cond_first_use_ever)
-  ImGui.SetNextWindowPos(ctx, 0, 0, cond_first_use_ever)
-  
-  -- Set window transparency (optional)
-  ImGui.SetNextWindowBgAlpha(ctx, 1.0)
-  
-  -- Convert RGBA floats to packed integer color (0xAABBGGRR)
-  local function rgba_to_packed(r, g, b, a)
-    r = math.floor((r or 0.1) * 255)
-    g = math.floor((g or 0.1) * 255)
-    b = math.floor((b or 0.1) * 255)
-    a = math.floor((a or 1.0) * 255)
-    return (a << 24) | (b << 16) | (g << 8) | r
+  if not ensure_context() then
+    console_logger.log("Cannot proceed without context")
+    return
   end
-
-  -- Get theme colors from enhanced theming panel via script manager
-  local theme_colors = {}
   
-  -- Always use the theming panel from script manager (this is the active instance the user interacts with)
-  local active_theming_panel = script_manager.get_tool('enhanced_theming_panel')
-  
-  if active_theming_panel and active_theming_panel.get_theme_colors then
-    theme_colors = active_theming_panel.get_theme_colors()
-  else
-    -- Fallback colors if theming panel not available
-    theme_colors = {
-      background = rgba_to_packed(0.1, 0.1, 0.1, 1.0),
-      text = 0xFFFFFFFF,
-      button = 0x4D4D80FF,
-      button_hovered = 0x6666B3FF,
-      button_active = 0x333366FF,
-    }
-  end
-
-  -- Apply comprehensive theme colors
-  local col_window_bg = type(ImGui.Col_WindowBg) == "function" and ImGui.Col_WindowBg() or 2
-  local col_text = type(ImGui.Col_Text) == "function" and ImGui.Col_Text() or 0
-  local col_button = type(ImGui.Col_Button) == "function" and ImGui.Col_Button() or 21
-  local col_button_hovered = type(ImGui.Col_ButtonHovered) == "function" and ImGui.Col_ButtonHovered() or 22
-  local col_button_active = type(ImGui.Col_ButtonActive) == "function" and ImGui.Col_ButtonActive() or 23
-  
-  -- Push all theme colors
-  ImGui.PushStyleColor(ctx, col_window_bg, theme_colors.background)
-  ImGui.PushStyleColor(ctx, col_text, theme_colors.text)
-  ImGui.PushStyleColor(ctx, col_button, theme_colors.button)
-  ImGui.PushStyleColor(ctx, col_button_hovered, theme_colors.button_hovered)
-  ImGui.PushStyleColor(ctx, col_button_active, theme_colors.button_active)
-  
-  local window_flags = ImGui.WindowFlags_NoDocking | (1 << 8) -- Only AlwaysOnTop, no AutoResize/NoMove
-  local open, window_open = ImGui.Begin(ctx, 'DevToolbox', true, window_flags)
-  if open then
-    ImGui.Text(ctx, "REAPER DEVTOOLBOX WINDOW VISIBLE")
+  -- Complete frame in one protected call
+  local frame_ok, frame_err = pcall(function()
+    -- Window setup
+    reaper.ImGui_SetNextWindowSize(ctx, 800, 600, 4) -- Cond_FirstUseEver = 4
+    reaper.ImGui_SetNextWindowPos(ctx, 0, 0, 4) -- Cond_FirstUseEver = 4
     
-    -- Add close button with themed warning color
-    ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0xFF3333FF) -- Keep red for warning
-    if ImGui.Button(ctx, "Close DevToolbox") then
-      should_close_devtoolbox = true
-    end
-    ImGui.PopStyleColor(ctx)
-    ImGui.SameLine(ctx)
-    ImGui.Text(ctx, "(Click to intentionally close)")
+    -- Begin main window
+    local visible, window_open = reaper.ImGui_Begin(ctx, 'DevToolbox', true, 16) -- WindowFlags_MenuBar = 16
     
-    ImGui.Separator(ctx)
-    -- Enhanced theming panel creates its own window, so no special handling needed here
-    -- ...existing code for panels...
-    if ImGui.BeginChild(ctx, 'panel_selector', 250, -120, ImGui.ChildFlags_Border) then
-      ImGui.Text(ctx, "UI Panels")
-      ImGui.Separator(ctx)
-      local tools = script_manager.get_tools()
-      
-      -- Sort panel names for consistent ordering
-      local sorted_names = {}
-      for name in pairs(tools) do
-        table.insert(sorted_names, name)
-      end
-      table.sort(sorted_names)
-      
-      for _, name in ipairs(sorted_names) do
-        local tool = tools[name]
-        ImGui.PushID(ctx, name)
-        
-        -- Panel selection button - makes it the active panel
-        if ImGui.Button(ctx, "Select##"..name, 60) then
-          active_tool_name = name
-          console_logger.log("[INFO] Selected panel '"..name.."'")
-        end
-        ImGui.SameLine(ctx)
-        
-        -- Panel name - also selectable (display full name)
-        local is_selected = (name == active_tool_name)
-        if ImGui.Selectable(ctx, name, is_selected) then
-          active_tool_name = name
-          console_logger.log("[INFO] Selected panel '"..name.."'")
+    if visible then
+      -- Menu bar
+      if reaper.ImGui_BeginMenuBar(ctx) then
+        -- Layout menu
+        if reaper.ImGui_BeginMenu(ctx, "Layout") then
+          if reaper.ImGui_MenuItem(ctx, "🔃 Reload Dock Layout") then
+            if reaper.ImGui_LoadIniSettingsFromDisk then
+              reaper.ImGui_LoadIniSettingsFromDisk(ctx, dock_path)
+              console_logger.log("Dock layout reloaded")
+            end
+          end
+          if reaper.ImGui_MenuItem(ctx, "💾 Save Dock Layout") then
+            if reaper.ImGui_SaveIniSettingsToDisk then
+              reaper.ImGui_SaveIniSettingsToDisk(ctx, dock_path)
+              console_logger.log("Dock layout saved")
+            end
+          end
+          reaper.ImGui_EndMenu(ctx)
         end
         
-        ImGui.PopID(ctx)
-      end
-      ImGui.EndChild(ctx)
-    end
-    ImGui.SameLine(ctx)
-    -- Main content area for the selected panel
-    if ImGui.BeginChild(ctx, 'content', 0, -120, ImGui.ChildFlags_Border) then
-      ImGui.Text(ctx, active_tool_name)
-      ImGui.Separator(ctx)
-      
-      local panel = script_manager.get_tool(active_tool_name)
-      
-      if panel and panel.draw then
-        local ok, err = pcall(panel.draw, ctx)
-        if not ok then
-          console_logger.log("Error running panel: " .. tostring(err))
-          ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFF2222FF)
-          ImGui.Text(ctx, "Error running panel: " .. tostring(err))
-          ImGui.PopStyleColor(ctx)
+        -- Tools menu
+        if reaper.ImGui_BeginMenu(ctx, "Tools") then
+          if reaper.ImGui_MenuItem(ctx, "🔄 Reload All Tools") then
+            show_reload_confirm = true
+          end
+          reaper.ImGui_Separator(ctx)
+          if reaper.ImGui_MenuItem(ctx, "⚙️ Open Config Panel") then
+            active_tool_name = "config_panel"
+          end
+          reaper.ImGui_EndMenu(ctx)
         end
-      else
-        ImGui.Text(ctx, "Could not load panel: " .. tostring(active_tool_name))
+        
+        -- Help menu
+        if reaper.ImGui_BeginMenu(ctx, "Help") then
+          if reaper.ImGui_MenuItem(ctx, "📖 About DevToolbox") then
+            console_logger.log("About DevToolbox")
+          end
+          if reaper.ImGui_MenuItem(ctx, "🐛 Debug Info") then
+            console_logger.log("=== DEBUG INFO ===")
+            console_logger.log("REAPER version: " .. reaper.GetAppVersion())
+            console_logger.log("Context: " .. tostring(ctx))
+            console_logger.log("================")
+          end
+          reaper.ImGui_EndMenu(ctx)
+        end
+        
+        reaper.ImGui_EndMenuBar(ctx)
       end
-      ImGui.EndChild(ctx)
-    end
-    -- Copyable Console Log Panel
-    if ImGui.BeginChild(ctx, 'console_area', 0, 120, ImGui.ChildFlags_Border) then
-      ImGui.Text(ctx, "Console Log")
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Clear") then console_logger.clear() end
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Copy All") then
+      
+      -- Main content
+      reaper.ImGui_Text(ctx, "REAPER DevToolbox")
+      reaper.ImGui_Text(ctx, "Context: " .. tostring(ctx))
+      
+      -- Reload confirmation
+      if show_reload_confirm then
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Text(ctx, "⚠️ Reload all tools?")
+        
+        if reaper.ImGui_Button(ctx, "✓ YES - RELOAD") then
+          script_manager.reload_scripts_live()
+          script_manager.init_all()
+          console_logger.log("Tools reloaded")
+          show_reload_confirm = false
+        end
+        
+        reaper.ImGui_SameLine(ctx)
+        
+        if reaper.ImGui_Button(ctx, "✗ CANCEL") then
+          show_reload_confirm = false
+        end
+        
+        reaper.ImGui_Separator(ctx)
+      end
+      
+      -- Tool selection panel
+      if reaper.ImGui_BeginChild(ctx, 'panel_selector', 250, -120) then
+        reaper.ImGui_Text(ctx, "UI Panels")
+        reaper.ImGui_Separator(ctx)
+        
+        local registry = script_manager.get_registry()
+        for name, info in pairs(registry) do
+          if info.active then
+            local is_selected = (name == active_tool_name)
+            if reaper.ImGui_Selectable(ctx, info.label or name, is_selected) then
+              active_tool_name = name
+              console_logger.log("Selected panel: " .. name)
+            end
+          end
+        end
+        
+        reaper.ImGui_EndChild(ctx)
+      end
+      
+      reaper.ImGui_SameLine(ctx)
+      
+      -- Main content area
+      if reaper.ImGui_BeginChild(ctx, 'content', 0, -120) then
+        local tool_info = script_manager.get_tool_info(active_tool_name)
+        local display_title = active_tool_name
+        
+        if tool_info then
+          display_title = (tool_info.icon or "📄") .. " " .. (tool_info.label or active_tool_name)
+        end
+        
+        reaper.ImGui_Text(ctx, display_title)
+        reaper.ImGui_Separator(ctx)
+        
+        local panel = script_manager.get_tool(active_tool_name)
+        if panel and panel.draw and tool_info and tool_info.active then
+          local panel_ok, panel_err = pcall(panel.draw, ctx)
+          if not panel_ok then
+            reaper.ImGui_Text(ctx, "Panel error: " .. tostring(panel_err))
+          end
+        else
+          reaper.ImGui_Text(ctx, "No active tool selected")
+        end
+        
+        reaper.ImGui_EndChild(ctx)
+      end
+      
+      -- Console log area
+      if reaper.ImGui_BeginChild(ctx, 'console_area', 0, 120) then
+        reaper.ImGui_Text(ctx, "Console Log")
+        reaper.ImGui_SameLine(ctx)
+        
+        if reaper.ImGui_Button(ctx, "Clear") then
+          console_logger.clear()
+        end
+        
+        reaper.ImGui_Separator(ctx)
+        
         local log = table.concat(console_logger.get_messages(), "\n")
-        ImGui.SetClipboardText(ctx, log)
+        reaper.ImGui_InputTextMultiline(ctx, "##console_log", log, -1, -1)
+        
+        reaper.ImGui_EndChild(ctx)
       end
-      ImGui.Separator(ctx)
-      local log = table.concat(console_logger.get_messages(), "\n")
-      ImGui.InputTextMultiline(ctx, "##console_log", log, -1, -1, 0x800) -- ReadOnly
-      ImGui.EndChild(ctx)
+      
+      -- Close button
+      reaper.ImGui_Separator(ctx)
+      if reaper.ImGui_Button(ctx, "Close DevToolbox") then
+        should_close_devtoolbox = true
+      end
+      
+      reaper.ImGui_End(ctx)
     end
-    
-    -- Pop the 5 style colors that were pushed at the beginning of the window
-    ImGui.PopStyleColor(ctx, 5)
-    ImGui.End(ctx)
+  end)
+  
+  if not frame_ok then
+    console_logger.log("Frame error: " .. tostring(frame_err))
   end
-
-  -- Keep the script running unless explicitly closed or in test environment
+  
+  -- Continue loop
   if not should_close_devtoolbox and not _TEST_ENV then
     reaper.defer(loop)
   else
-    -- Cleanup when intentionally closed or in test environment
-    script_manager.shutdown_all()
+    console_logger.log("DevToolbox closing")
+    if ctx and reaper.ImGui_DestroyContext then
+      reaper.ImGui_DestroyContext(ctx)
+    end
   end
 end
 
--- Initial load and setup
+-- Initialize and start
 script_manager.reload_scripts()
 script_manager.init_all()
+
+console_logger.log("Starting DevToolbox with proper context management")
+
+-- Clean exit handler
+reaper.atexit(function()
+  if ctx and reaper.ImGui_DestroyContext then
+    reaper.ImGui_DestroyContext(ctx)
+  end
+  if reaper.ImGui_SaveIniSettingsToDisk then
+    reaper.ImGui_SaveIniSettingsToDisk(ctx, dock_path)
+  end
+end)
 
 if not _TEST_ENV then
   reaper.defer(loop)
 end
 
---
--- [API NOTE]:
--- All ImGui.BeginChild/ImGui.EndChild calls are now properly paired and wrapped in if statements.
--- Only valid ImGuiChildFlags (or none) are used for BeginChild.
--- No ImGuiWindowFlags are passed to BeginChild.
--- This ensures no mismatched Begin/End errors and no assertion failures in the UI stack.
---
--- If you add new ImGui.BeginChild calls, always:
---   1. Wrap them in an if-statement.
---   2. Call ImGui.EndChild() only if the corresponding BeginChild returned true.
---   3. Use only valid ImGuiChildFlags (or none) for the flags argument.
---
--- This pattern is now enforced throughout the DevToolbox main UI.
 return { console_logger = console_logger, script_manager = script_manager }

@@ -30,4 +30,12 @@ function M.shutdown()
     reaper.ShowConsoleMsg("test_mvp_tool shutdown\n")
 end
 
+-- Tool metadata
+M.metadata = {
+    label = "🧪 Test MVP Tool",
+    icon = "🧪",
+    category = "Testing",
+    active = false
+}
+
 return M
