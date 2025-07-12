@@ -8,22 +8,7 @@ local font_config = {
     current_font = nil,
     current_font_size = 14,
     custom_fonts = {},
-    system_fonts = {
-        { name = "Default ImGui", family = "default", description = "Built-in ImGui font" },
-        { name = "Arial", family = "Arial", description = "System Arial font" },
-        { name = "Calibri", family = "Calibri", description = "System Calibri font" },
-        { name = "Consolas", family = "Consolas", description = "System Consolas monospace font" },
-        { name = "Courier New", family = "Courier New", description = "System Courier New monospace font" },
-        { name = "Georgia", family = "Georgia", description = "System Georgia serif font" },
-        { name = "Helvetica", family = "Helvetica", description = "System Helvetica font" },
-        { name = "Impact", family = "Impact", description = "System Impact font" },
-        { name = "Lucida Console", family = "Lucida Console", description = "System Lucida Console monospace font" },
-        { name = "Segoe UI", family = "Segoe UI", description = "System Segoe UI font" },
-        { name = "Tahoma", family = "Tahoma", description = "System Tahoma font" },
-        { name = "Times New Roman", family = "Times New Roman", description = "System Times New Roman serif font" },
-        { name = "Trebuchet MS", family = "Trebuchet MS", description = "System Trebuchet MS font" },
-        { name = "Verdana", family = "Verdana", description = "System Verdana font" }
-    },
+    fonts = {}, -- Will be loaded from font_config.lua
     font_sizes = { 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28, 32, 36, 48 }
 }
 
@@ -33,6 +18,9 @@ local font_cache = {}
 -- Storage paths
 local fonts_dir = ""
 local config_file = ""
+
+-- Font stack for push/pop operations (SOP requirement)
+local font_stack = {}
 
 function M.init()
     -- Clear any existing font cache to prevent issues
@@ -198,8 +186,8 @@ end
 function M.get_available_fonts()
     local fonts = {}
     
-    -- Add system fonts
-    for _, font in ipairs(font_config.system_fonts) do
+    -- Add fonts from font_config.lua (replaces system_fonts)
+    for _, font in ipairs(font_config.fonts) do
         table.insert(fonts, font)
     end
     
@@ -229,37 +217,46 @@ function M.create_font(font_info, size, ctx)
     -- Only create actual font instances when running in REAPER
     if reaper and reaper.ImGui_CreateFont then
         if font_info.path then
-            -- Custom font from file
+            -- Custom font from TTF/OTF file using AddFontFromFileTTF
             local success, result = pcall(function()
-                return reaper.ImGui_CreateFont(font_info.path, size)
+                if reaper.ImGui_AddFontFromFileTTF then
+                    return reaper.ImGui_AddFontFromFileTTF(ctx, font_info.path, size)
+                else
+                    -- Fallback to CreateFont
+                    return reaper.ImGui_CreateFont(font_info.path, size)
+                end
             end)
             
             if success and result then
                 font_instance = result
                 
-                -- Attach to context if provided and attachment function exists
-                if ctx and reaper.ImGui_AttachFont then
-                    local attach_ok, attach_err = pcall(reaper.ImGui_AttachFont, ctx, font_instance)
-                    if not attach_ok then
-                        -- Font created but couldn't attach - still cache it for later use
-                        print("Font attachment warning: " .. tostring(attach_err))
+                -- Attach to context using generic ImGui_Attach
+                if ctx and reaper.ImGui_Attach then
+                    local ok, err = pcall(reaper.ImGui_Attach, ctx, font_instance)
+                    if not ok then
+                        print("⚠️ Font attachment failed: " .. tostring(err))
                     end
                 end
             end
         elseif font_info.family and font_info.family ~= "default" then
-            -- System font family - create if possible
+            -- System font family
             local success, result = pcall(function()
-                return reaper.ImGui_CreateFont(font_info.family, size)
+                if reaper.ImGui_AddFontFromFileTTF then
+                    -- Try to find system font path (fallback to CreateFont)
+                    return reaper.ImGui_CreateFont(font_info.family, size)
+                else
+                    return reaper.ImGui_CreateFont(font_info.family, size)
+                end
             end)
             
             if success and result then
                 font_instance = result
                 
-                -- Attach to context if provided
-                if ctx and reaper.ImGui_AttachFont then
-                    local attach_ok, attach_err = pcall(reaper.ImGui_AttachFont, ctx, font_instance)
-                    if not attach_ok then
-                        print("Font attachment warning: " .. tostring(attach_err))
+                -- Attach to context using generic ImGui_Attach
+                if ctx and reaper.ImGui_Attach then
+                    local ok, err = pcall(reaper.ImGui_Attach, ctx, font_instance)
+                    if not ok then
+                        print("⚠️ Font attachment failed: " .. tostring(err))
                     end
                 end
             end
@@ -427,6 +424,10 @@ function M.load_config()
             if config.current_font_size then
                 font_config.current_font_size = config.current_font_size
             end
+            -- Load fonts array from config (single source of truth)
+            if config.fonts then
+                font_config.fonts = config.fonts
+            end
         end
     end
 end
@@ -439,8 +440,8 @@ function M.export_font_list(ctx)
     local fonts = M.get_available_fonts()
     local export_text = "DevToolbox Available Fonts:\n\n"
     
-    export_text = export_text .. "System Fonts:\n"
-    for _, font in ipairs(font_config.system_fonts) do
+    export_text = export_text .. "Configured Fonts:\n"
+    for _, font in ipairs(font_config.fonts) do
         export_text = export_text .. "- " .. font.name .. " (" .. font.family .. ")\n"
     end
     
@@ -567,6 +568,94 @@ function M.test_font_creation(font_info, size)
     end
     
     return success, message
+end
+
+-- Push font function (SOP required)
+function M.push_font(ctx, font_name, size)
+    if not ctx then
+        return false, "No context provided"
+    end
+    
+    -- Find font info by name
+    local font_info = nil
+    local available_fonts = M.get_available_fonts()
+    
+    for _, font in ipairs(available_fonts) do
+        if font.name == font_name or font.family == font_name then
+            font_info = font
+            break
+        end
+    end
+    
+    if not font_info then
+        return false, "Font not found: " .. tostring(font_name)
+    end
+    
+    -- Create or get font instance
+    local font_instance = M.create_font(font_info, size, ctx)
+    
+    if font_instance and reaper and reaper.ImGui_PushFont then
+        local success, err = pcall(reaper.ImGui_PushFont, ctx, font_instance)
+        if success then
+            -- Push to our tracking stack
+            table.insert(font_stack, {
+                instance = font_instance,
+                info = font_info,
+                size = size
+            })
+            return true, "Font pushed successfully"
+        else
+            return false, "Failed to push font: " .. tostring(err)
+        end
+    elseif not font_instance then
+        -- If no instance, it's the default font
+        return true, "Using default font (no push needed)"
+    else
+        return false, "ImGui_PushFont not available"
+    end
+end
+
+-- Pop font function (SOP required)
+function M.pop_font(ctx)
+    if not ctx then
+        return false, "No context provided"
+    end
+    
+    if #font_stack == 0 then
+        return false, "No fonts to pop"
+    end
+    
+    if reaper and reaper.ImGui_PopFont then
+        local success, err = pcall(reaper.ImGui_PopFont, ctx)
+        if success then
+            -- Remove from our tracking stack
+            table.remove(font_stack)
+            return true, "Font popped successfully"
+        else
+            return false, "Failed to pop font: " .. tostring(err)
+        end
+    else
+        -- Still remove from stack even if ImGui isn't available
+        table.remove(font_stack)
+        return true, "Font popped (ImGui not available)"
+    end
+end
+
+-- Get current font stack depth
+function M.get_font_stack_depth()
+    return #font_stack
+end
+
+-- Clear font stack (cleanup function)
+function M.clear_font_stack(ctx)
+    if ctx and reaper and reaper.ImGui_PopFont then
+        while #font_stack > 0 do
+            pcall(reaper.ImGui_PopFont, ctx)
+            table.remove(font_stack)
+        end
+    else
+        font_stack = {}
+    end
 end
 
 return M
