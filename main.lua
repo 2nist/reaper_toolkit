@@ -18,11 +18,54 @@ if not reaper or not reaper.ImGui_CreateContext then
   return
 end
 
+-- Font persistence settings
+local SECTION = "DevToolbox"
+local KEY     = "DefaultFont"
+local SIZE_KEY = "DefaultFontSize"
+local BOLD_KEY = "DefaultFontBold"
+
+-- Utility to get/set the chosen font settings
+local function get_saved_font()
+  local saved = reaper.GetExtState(SECTION, KEY)
+  return saved ~= "" and saved or "Arial"  -- Default to Arial if empty
+end
+
+local function get_saved_font_size()
+  local size = reaper.GetExtState(SECTION, SIZE_KEY)
+  return size ~= "" and tonumber(size) or 16
+end
+
+local function get_saved_font_bold()
+  local bold = reaper.GetExtState(SECTION, BOLD_KEY)
+  return bold == "true"
+end
+
+local function save_font(name)
+  reaper.SetExtState(SECTION, KEY, name, true)  -- persistent=true
+end
+
+local function save_font_size(size)
+  reaper.SetExtState(SECTION, SIZE_KEY, tostring(size), true)
+end
+
+local function save_font_bold(bold)
+  reaper.SetExtState(SECTION, BOLD_KEY, tostring(bold), true)
+end
+
+-- Export font utilities globally for panels to use
+_G.get_saved_font = get_saved_font
+_G.get_saved_font_size = get_saved_font_size
+_G.get_saved_font_bold = get_saved_font_bold
+_G.save_font = save_font
+_G.save_font_size = save_font_size
+_G.save_font_bold = save_font_bold
+
 -- Load core modules
 local script_manager = require 'script_manager'
 local console_logger = require 'console_logger'
+local font_list = require 'font_config'
 
--- Initialize script manager
+-- Initialize modules
 script_manager.init(script_path)
 
 -- Context and state variables
@@ -34,13 +77,41 @@ local show_reload_confirm = false
 -- Dock layout path
 local dock_path = reaper.GetResourcePath() .. "/DevToolbox_dock.ini"
 
--- Context creation (once only)
+-- Context creation (once only) - Simplified font loading
 local function ensure_context()
   if not ctx then
+    -- 1. Create ImGui context
     ctx = reaper.ImGui_CreateContext('REAPER DevToolbox')
     if ctx then
       console_logger.log("ImGui context created: " .. tostring(ctx))
       _G.devtoolbox_ctx = ctx
+      
+      -- 2. Simple: Just use Arial font at 16px
+      local font_info = { name = "Arial", path = "Arial" }
+      local size = 16
+      local saved_bold = false
+      
+      -- 3. Override ImGui's default font right after CreateContext
+      local font_path = font_info.path
+      if saved_bold then
+        -- Try to find a bold variant (this is system-dependent)
+        -- For Windows system fonts, we can try appending " Bold"
+        font_path = font_info.path .. " Bold"
+      end
+      
+      local ok, inst = pcall(function()
+        return reaper.ImGui_CreateFont(font_path, size)
+      end)
+      if not ok or not inst then
+        reaper.MB("Could not load font \"" .. font_info.name .. "\"\nFalling back to default.", "Font Error", 0)
+        _G.devtoolbox_font = nil
+        console_logger.log("Font load failed: " .. font_info.name .. " - using default")
+      else
+        -- CRITICAL: Attach the font to the context before using it
+        reaper.ImGui_Attach(ctx, inst)
+        _G.devtoolbox_font = inst
+        console_logger.log("Font loaded and attached: " .. font_info.name .. " " .. size .. "px")
+      end
       
       -- Load dock layout
       if reaper.ImGui_LoadIniSettingsFromDisk then
@@ -71,6 +142,13 @@ local function loop()
     
     -- Begin main window
     local visible, window_open = reaper.ImGui_Begin(ctx, 'DevToolbox', true, 16) -- WindowFlags_MenuBar = 16
+    
+    -- Push custom font for the entire UI
+    local using_custom_font = false
+    if _G.devtoolbox_font then
+      reaper.ImGui_PushFont(ctx, _G.devtoolbox_font)
+      using_custom_font = true
+    end
     
     if visible then
       -- Menu bar
@@ -215,6 +293,11 @@ local function loop()
         should_close_devtoolbox = true
       end
       
+    -- Pop custom font before ending window
+    if using_custom_font then
+      reaper.ImGui_PopFont(ctx)
+    end
+    
       reaper.ImGui_End(ctx)
     end
   end)
@@ -228,9 +311,7 @@ local function loop()
     reaper.defer(loop)
   else
     console_logger.log("DevToolbox closing")
-    if ctx and reaper.ImGui_DestroyContext then
-      reaper.ImGui_DestroyContext(ctx)
-    end
+    -- Per SOP: Don't call ImGui_DestroyContext - let REAPER handle cleanup
   end
 end
 
@@ -242,9 +323,7 @@ console_logger.log("Starting DevToolbox with proper context management")
 
 -- Clean exit handler
 reaper.atexit(function()
-  if ctx and reaper.ImGui_DestroyContext then
-    reaper.ImGui_DestroyContext(ctx)
-  end
+  -- Per SOP: Don't call ImGui_DestroyContext - let REAPER handle cleanup
   if reaper.ImGui_SaveIniSettingsToDisk then
     reaper.ImGui_SaveIniSettingsToDisk(ctx, dock_path)
   end

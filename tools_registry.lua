@@ -6,8 +6,8 @@ return {
   config_panel = {
     label = "⚙ Config Panel",
     icon = "⚙",
-    active = true,
-    file = "config_panel.lua",
+    active = false,  -- Disabled for now
+    file = "simple_config_panel.lua",
     category = "Configuration"
   },
   style_editor_panel = {
@@ -51,5 +51,12 @@ return {
     active   = true,
     file     = "chord_dataset_browser.lua",
     category = "MIDI"
+  },
+  font_selector_panel = {
+    label    = "🔤 Font Selector",
+    icon     = "🔤",
+    active   = false,
+    file     = "font_selector_panel.lua",
+    category = "UI"
   },
 }

@@ -132,17 +132,20 @@ function M.reload_scripts()
     -- Load only registered and active tools
     for name, tool_info in pairs(registry) do
         if tool_info.active then
-            -- Clear from package cache to force reload
-            package.loaded[name] = nil
+            -- Use the file field from registry, or fallback to name
+            local module_name = tool_info.file and tool_info.file:gsub('%.lua$', '') or name
             
-            local ok, tool_module = pcall(require, name)
+            -- Clear from package cache to force reload
+            package.loaded[module_name] = nil
+            
+            local ok, tool_module = pcall(require, module_name)
             if ok and type(tool_module) == 'table' then
                 tools[name] = tool_module
                 console_logger.log("Successfully loaded panel: " .. name .. " (" .. tool_info.label .. ")")
             else
                 local err_msg = tostring(tool_module)
                 tools[name] = nil
-                package.loaded[name] = nil
+                package.loaded[module_name] = nil
                 console_logger.log("Error loading panel '" .. name .. "':\n" .. err_msg)
             end
         else
@@ -209,8 +212,11 @@ function M.toggle_tool(name)
         
         -- If we're activating a tool, load it
         if registry[name].active then
-            package.loaded[name] = nil
-            local ok, tool_module = pcall(require, name)
+            -- Use the file field from registry, or fallback to name
+            local module_name = registry[name].file and registry[name].file:gsub('%.lua$', '') or name
+            
+            package.loaded[module_name] = nil
+            local ok, tool_module = pcall(require, module_name)
             if ok and type(tool_module) == 'table' then
                 tools[name] = tool_module
                 if tool_module.init then

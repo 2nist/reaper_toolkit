@@ -1,0 +1,202 @@
+Arrangement Engine Development Guide
+
+This document provides a structured plan for building a flexible Arrangement Engine in Reaper, integrating diverse datasets and workflows across environments. It highlights pain‑points, workarounds, MVP phases, future considerations, and required enhancements for EnviREAment, reaper_toolkit, and python-midi-toolkit.
+
+Table of Contents
+
+Overview
+
+Supported Formats & Schema
+
+Core Architecture
+
+Pain‑Points & Workarounds
+
+MVP Roadmap (3 Phases)
+
+Future Considerations
+
+Environment Integration
+
+Spreadsheet & Manual Workflow
+
+Follow‑Up Questions
+
+Overview
+
+The Arrangement Engine will:
+
+Ingest: .mid, .jcrd (JSON Chord), JAMS, MusicXML, spreadsheets (.csv/.xlsx)
+
+Normalize: convert to a canonical Event format with metadata
+
+Sequence: lay out chords, drums, sections, and tracks in Reaper
+
+Export: write back to MIDI, JCRD, JAMS, JSON, MusicXML, spreadsheet
+
+A highly manual UI allows per‑chord, per‑section, and per‑song control, with ML integration optional for future phases.
+
+Supported Formats & Schema
+
+.jcrd (JSON Chord)
+
+Extension: .json
+
+New Fields:
+
+id: unique progression or section identifier
+
+dynamics: array of dynamic markings per chord (e.g., p, mf, f)
+
+timeSignature: e.g., 4/4, 3/4 at section level
+
+lyricsPrompt: first-line lyric for reference or vocal guide
+
+Canonical Event Structure
+
+{
+  "type": "chord" | "note" | "drum",
+  "id": "verse_1_chord_1",
+  "start_ppq": 0,
+  "duration_ppq": 480,
+  "pitch": 60,
+  "velocity": 100,
+  "chord_symbol": "Cmaj7",
+  "dynamics": "mf",
+  "section": "verse_1",
+  "lyricsPrompt": "When I find myself…"
+}
+
+Core Architecture
+
+Import Modules: adapters for each file type → Event list
+
+Normalizer: tempo map → PPQ grid; time‑sig resolution; dynamic & lyric mapping
+
+Sequencer: build Reaper tracks, items, regions
+
+UI Layer: ReaImGui panels for manual editing; drag‑drop chords & sections
+
+Export Modules: serialize back to each format; spreadsheet template
+
+Pain‑Points & Workarounds
+
+Pain‑Point
+
+Workaround
+
+Variable tempo & time signatures
+
+Flatten to fixed PPQ on import; store time‑sig metadata
+
+Large datasets lagging UI
+
+Virtualize list rendering; lazy‑load visible items
+
+Complex .jcrd schema updates
+
+Single adapter module; validate via shared JSON schema file
+
+Manual edits vs. undo stack
+
+Batch UI actions into single Reaper undo events
+
+MVP Roadmap (3 Phases)
+
+Phase 1: Core CLI & Batch
+
+Import .mid + .jcrd → Events
+
+Snap to fixed tempo & grid
+
+Generate chord track via static template
+
+Export to .mid & updated .jcrd
+
+Phase 2: Interactive UI
+
+Add MusicXML & JAMS import/export
+
+ReaImGui panel: file picker, Event list, section browser
+
+Manual drag‑drop & ID editing
+
+Export to spreadsheet (.csv/.xlsx)
+
+Phase 3: Real‑Time & ML
+
+Real‑time arrange on parameter change (debounced)
+
+Region‑canvas: resize, color‑code, label
+
+Hook-in ML model for chord suggestions (TensorFlow/PyTorch)
+
+Batch export all formats in one click
+
+Future Considerations
+
+Undo/Redo: group UI edits into coherent undo steps
+
+Collaboration: Git‑friendly .json diffs; shared templates
+
+Scalability: index 1M+ progressions; local HTTP API for fast lookup
+
+Extensibility: OSC and scripting hooks for external control
+
+Environment Integration
+
+EnviREAment
+
+Mock Reaper APIs: tempo‑map, markers, MIDI insert
+
+Headless test runner for import → arrange → export
+
+reaper_toolkit
+
+New panels/arrangement_engine.lua module
+
+Register actions: Import JCRD, Export Spreadsheet, Randomize Section
+
+Font & theme tweaks for chord symbols
+
+python-midi-toolkit
+
+.jcrd, JAMS, MusicXML parsers → Event JSON
+
+CLI: arrange --in foo.json --out bar.json --export-midi bar.mid
+
+Placeholder for ML inference: predict_arrangement()
+
+Spreadsheet & Manual Workflow
+
+Use an editable .xlsx with columns:
+
+Section
+
+Start Bar
+
+End Bar
+
+Chord Symbol
+
+Dynamics
+
+Time Signature
+
+Lyrics Prompt
+
+Comments
+
+Import: read spreadsheet into Events to seed arrangement
+
+Export: write out current arrangement for offline planning
+
+Follow‑Up Questions
+
+Can you share a sample .jcrd file, including new fields, to validate the adapter?
+
+Do you need to support additional metadata (e.g., mood tags, instrumentation)?
+
+Will per‑note editing ever be required, or remain out‑of‑scope?
+
+Which ML frameworks do you plan to prioritize for Phase 3?
